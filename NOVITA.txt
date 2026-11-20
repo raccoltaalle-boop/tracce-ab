@@ -1,1 +1,1 @@
-Aggiornamento automatico all'avvio.
+Velocità ogni 100 m, tracce colorate per velocità (rosso lento -> verde veloce), dati di registrazione più chiari.
