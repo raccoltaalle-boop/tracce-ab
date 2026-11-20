@@ -1,0 +1,3 @@
+Build 2 - commit 87caf30 - Fri Nov 20 16:34:09 UTC 2026
+
+ERRORE: mancano i secrets KEYSTORE_B64 / KEYSTORE_PASS (Settings > Secrets and variables > Actions)
