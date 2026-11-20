@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Tracce A→B</title>
+<link rel="stylesheet" href="leaflet.css">
+<script src="leaflet.js"></script>
+<style>
+:root{--bg:#14181f;--panel:#1c222c;--line:#2c3440;--tx:#e8ecf2;--mut:#8a95a6;--acc:#ffb400;--ok:#3ecf8e;--bad:#ff5d5d;--a:#2e86ab;--b:#e4572e;--chip:#2a323e}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:15px/1.35 system-ui,Roboto,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%}
+header{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;flex:1}header h1 b{color:var(--acc)}
+#recBadge{display:none;background:var(--bad);color:#fff;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700}
+.mapwrap{position:relative;flex:1;min-height:0;display:flex}#map{flex:1}
+.hint{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;background:#000c;color:#fff;padding:7px 12px;border-radius:20px;font-size:13px;display:none;white-space:nowrap}
+#sheet{background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column;height:50vh;transition:height .2s}
+#sheet.min{height:52px}#sheet.max{height:82vh}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs button{flex:1;border:0;background:none;color:var(--mut);padding:9px 0 8px;font-size:11.5px;font-weight:600;border-bottom:2px solid transparent;line-height:1.1}
+.tabs button i{display:block;font-style:normal;font-size:17px;margin-bottom:2px}
+.tabs button.on{color:var(--tx);border-color:var(--acc)}
+.tabs .tg{flex:0 0 40px;font-size:18px}
+.pane{display:none;overflow:auto;padding:12px;flex:1}.pane.on{display:block}
+.btn{border:0;border-radius:10px;padding:10px 14px;font-weight:600;font-size:14px;background:var(--chip);color:var(--tx)}
+.btn.pri{background:var(--acc);color:#111}.btn.red{background:var(--bad);color:#fff}.btn.sm{padding:7px 10px;font-size:13px}
+.btn:disabled{opacity:.4}
+.big{width:100%;padding:16px;font-size:17px;border-radius:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.vehs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.vehs button{border:2px solid var(--line);background:var(--bg);color:var(--tx);border-radius:14px;padding:10px 0;font-size:13px;font-weight:600}
+.vehs button i{display:block;font-size:26px;font-style:normal}
+.vehs button.on{border-color:var(--acc);background:#ffb40018}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{border:0;background:var(--chip);color:var(--tx);border-radius:20px;padding:6px 11px;font-size:13px}
+.chips button.on{background:var(--acc);color:#111;font-weight:700}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+.stat{background:var(--bg);border-radius:10px;padding:8px 4px;text-align:center}
+.stat b{display:block;font-size:18px;font-variant-numeric:tabular-nums}.stat span{font-size:11px;color:var(--mut)}
+.mut{color:var(--mut);font-size:12.5px}
+select,input[type=text]{background:var(--chip);color:var(--tx);border:0;border-radius:10px;padding:9px;font-size:14px}
+.card{background:var(--bg);border-radius:12px;padding:10px 12px;margin-top:10px}
+.card h3{margin:0 0 6px;font-size:14.5px}
+.warn{border-left:4px solid var(--acc)}.good{border-left:4px solid var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:5px 4px;text-align:center;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left;color:var(--mut);font-weight:500}
+td.best{color:var(--ok);font-weight:700}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px;flex:0 0 10px}
+.item{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
+.item .grow{flex:1;min-width:0}.item.hl{background:#ffb40014}
+.item button{border:0;background:var(--chip);color:var(--tx);border-radius:8px;padding:7px 9px;font-size:13px}
+.item .dur{font-size:16px;font-variant-numeric:tabular-nums}
+.ck{width:22px;height:22px;accent-color:var(--acc);flex:0 0 22px}
+.sel2{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center}
+.sel2 select{width:100%}
+.lblA{color:#6cc3e8;font-weight:700}.lblB{color:#ff8a66;font-weight:700}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#000d;color:#fff;padding:9px 14px;border-radius:10px;font-size:13.5px;z-index:2000;display:none;max-width:90%;text-align:center}
+.rec-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#fff;margin-right:6px;animation:p 1s infinite}@keyframes p{50%{opacity:.2}}
+.plabel{background:#14181fe6;color:#fff;border:2px solid #fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700;white-space:nowrap;transform:translate(-50%,-50%);display:inline-block;box-shadow:0 2px 6px #0008}
+.fab{position:absolute;right:10px;bottom:12px;z-index:1000;border:0;border-radius:50%;width:46px;height:46px;background:var(--panel);color:#fff;font-size:20px;box-shadow:0 2px 8px #0009}
+svg text{fill:var(--mut);font-size:10px}
+.leaflet-container{background:#1b1f26}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><h1>Tracce <b>A→B</b></h1><span id="recBadge"><span class="rec-dot"></span>REC</span></header>
+  <div class="mapwrap"><div id="map"></div><div class="hint" id="hint"></div><button class="fab" id="locate" title="La mia posizione">◎</button></div>
+  <div id="sheet">
+    <div class="tabs">
+      <button data-t="rec" class="on"><i>●</i>Registra</button>
+      <button data-t="luo"><i>📍</i>Luoghi</button>
+      <button data-t="tra"><i>⇢</i>Tratte</button>
+      <button data-t="cmp"><i>⚖</i>Confronta</button>
+      <button data-t="arc"><i>☰</i>Archivio</button>
+      <button class="tg" id="tgl">▾</button>
+    </div>
+
+    <!-- REGISTRA -->
+    <div class="pane on" id="p-rec">
+      <div class="vehs" id="recVeh">
+        <button data-v="scooter"><i>🛵</i>Scooter</button>
+        <button data-v="bici"><i>🚲</i>Bici</button>
+        <button data-v="auto"><i>🚗</i>Auto</button>
+      </div>
+      <button class="btn pri big" id="recBtn">▶ Avvia registrazione</button>
+      <div class="stats">
+        <div class="stat"><b id="sT">0:00</b><span>tempo</span></div>
+        <div class="stat"><b id="sD">0.00</b><span>km</span></div>
+        <div class="stat"><b id="sV">0</b><span>km/h</span></div>
+        <div class="stat"><b id="sA">–</b><span>GPS ± m</span></div>
+      </div>
+      <div class="card warn" id="battCard" style="display:none"><h3>⚠ Ottimizzazione batteria attiva</h3><p class="mut" style="margin:0 0 8px">Alcuni telefoni (Xiaomi, Huawei, Samsung…) fermano il GPS a schermo spento. Escludi l'app dall'ottimizzazione.</p><button class="btn sm pri" id="battBtn">Apri impostazione</button></div>
+      <p class="mut">Puoi spegnere lo schermo e mettere il telefono in tasca: la registrazione continua finché c'è la notifica “Registrazione in corso”. Si ferma da qui o dalla notifica.</p>
+    </div>
+
+    <!-- LUOGHI -->
+    <div class="pane" id="p-luo">
+      <div class="row"><button class="btn pri sm" id="addPlace">＋ Nuovo luogo</button><button class="btn sm" id="addHere">＋ Qui dove sono</button></div>
+      <div id="placeForm"></div>
+      <div id="placeList"></div>
+      <p class="mut">Tocca “Nuovo luogo” e poi la mappa. Nella scheda Luoghi puoi trascinare i luoghi per spostarli.</p>
+    </div>
+
+    <!-- TRATTE -->
+    <div class="pane" id="p-tra">
+      <div class="sel2">
+        <select id="selA"></select><button class="btn sm" id="swap">⇄</button><select id="selB"></select>
+      </div>
+      <div class="row" style="margin-top:8px;justify-content:space-between">
+        <div class="chips" id="vehF"><button data-v="all" class="on">Tutti</button><button data-v="scooter">🛵</button><button data-v="bici">🚲</button><button data-v="auto">🚗</button></div>
+        <select id="sort"><option value="recent">più recenti</option><option value="fast">più veloci</option></select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select id="rad"><option value="60">raggio 60 m</option><option value="120">raggio 120 m</option><option value="250">raggio 250 m</option></select>
+        <button class="btn sm pri" id="goCmp" disabled>⚖ Confronta (0)</button>
+      </div>
+      <div id="traOut"></div>
+    </div>
+
+    <!-- CONFRONTA -->
+    <div class="pane" id="p-cmp"><div id="cmpOut"></div></div>
+
+    <!-- ARCHIVIO -->
+    <div class="pane" id="p-arc">
+      <div class="row">
+        <button class="btn sm" id="expG">⬇ GPX</button>
+        <button class="btn sm" id="expJ">⬇ Backup</button>
+        <label class="btn sm">⬆ Importa<input type="file" id="imp" accept=".gpx,.json,application/json,application/gpx+xml,application/octet-stream,text/xml" hidden></label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm" id="demo">🧪 Dati demo</button>
+        <button class="btn sm" id="delDemo">Elimina demo</button>
+        <button class="btn sm red" id="wipe">Cancella tutto</button>
+      </div>
+      <div id="arcList"></div>
+      <div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><span class="mut" id="verInfo">Tracce A→B</span><button class="btn sm" id="updBtn">🔄 Aggiornamenti</button></div></div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ================= utilità ================= */
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const VEH={scooter:{i:'🛵',n:'Scooter'},bici:{i:'🚲',n:'Bici'},auto:{i:'🚗',n:'Auto'}};
+const vi=v=>(VEH[v]||{i:'❔'}).i, vn=v=>(VEH[v]||{n:v}).n;
+const PAL=['#ffb400','#4fa3ff','#3ecf8e','#ff6bcb','#ff7a45','#a98bff','#c8e64b','#36d6e7'];
+const BANDS=[[0,6,'00–06'],[6,8,'06–08'],[8,10,'08–10'],[10,12,'10–12'],[12,15,'12–15'],[15,17,'15–17'],[17,19,'17–19'],[19,24,'19–24']];
+function toast(m,ms=2800){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>t.style.display='none',ms)}
+function hav(a1,o1,a2,o2){const R=6371000,r=Math.PI/180,dA=(a2-a1)*r,dO=(o2-o1)*r;const x=Math.sin(dA/2)**2+Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dO/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+const dP=(p,q)=>hav(p[0],p[1],q[0],q[1]);
+const ll=p=>[p[0],p[1]];
+function pathLen(pts,i0=0,i1=pts.length-1){let L=0;for(let i=i0+1;i<=i1;i++)L+=dP(pts[i-1],pts[i]);return L}
+function fmtDur(s){s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;return h?`${h}h${String(m).padStart(2,'0')}′`:`${m}:${String(ss).padStart(2,'0')}`}
+const fmtMin=s=>s<3600?`${Math.round(s/60)}′`:fmtDur(s);
+const fmtKm=m=>(m/1000).toFixed(m<10000?2:1).replace('.',',');
+const fmtV=(m,s)=>s>0?Math.round(m/s*3.6):0;
+const dd=t=>new Date(t).toLocaleDateString('it-IT',{weekday:'short',day:'2-digit',month:'2-digit'});
+const hh=t=>new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+const median=a=>{const s=[...a].sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):NaN};
+const bandOf=t=>{const h=new Date(t).getHours();return BANDS.findIndex(b=>h>=b[0]&&h<b[1])};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ================= ponte verso Android (o simulazione nel browser) ================= */
+const IS_ANDROID=typeof window.Android!=='undefined';
+const MOCK=(()=>{let db=null;try{db=JSON.parse(localStorage.getItem('mockdb'))}catch(e){}db=db||{tracks:[],kv:{},next:1};
+  const save=()=>{try{localStorage.setItem('mockdb',JSON.stringify(db))}catch(e){}};
+  let rec=null,watch=null,acc=-1,lastFinished=0,last=null;
+  return{
+    state:()=>({rec:!!rec,track:rec?rec.id:-1,vehicle:rec?rec.vehicle:'',start:rec?rec.start:0,count:rec?rec.points.length:0,acc,lastFinished}),
+    start(v){rec={id:db.next++,vehicle:v,start:Date.now(),end:Date.now(),live:1,demo:0,points:[]};db.tracks.push(rec);last=null;
+      watch=navigator.geolocation.watchPosition(p=>{const c=p.coords;acc=Math.round(c.accuracy);if(!rec||c.accuracy>40)return;const q=[c.latitude,c.longitude,p.timestamp||Date.now(),acc];
+        if(last){const d=dP(last,q),dt=(q[2]-last[2])/1000;if(d<5&&dt<15)return;if(d/Math.max(dt,1)>70)return}
+        rec.points.push(q);rec.end=q[2];last=q;save()},()=>{},{enableHighAccuracy:true,maximumAge:0});return'ok'},
+    stop(){if(watch!=null)navigator.geolocation.clearWatch(watch);if(rec){rec.live=0;if(rec.points.length<2)db.tracks=db.tracks.filter(t=>t!==rec);else lastFinished=rec.id;}rec=null;save()},
+    live:(id,from)=>{const t=db.tracks.find(t=>t.id===id);return t?t.points.slice(from):[]},
+    tracks:()=>JSON.parse(JSON.stringify(db.tracks.filter(t=>!t.live))),
+    del(id){db.tracks=db.tracks.filter(t=>t.id!==id);save()},
+    delDemo(){db.tracks=db.tracks.filter(t=>!t.demo);save()},
+    wipe(){db.tracks=db.tracks.filter(t=>t.live);save()},
+    import(arr){let n=0;arr.forEach(t=>{if(t.points&&t.points.length>1){db.tracks.push({id:db.next++,vehicle:t.vehicle,start:t.start,end:t.end,live:0,demo:t.demo?1:0,points:t.points});n++}});save();return n},
+    kvGet:(k,d)=>k in db.kv?JSON.parse(db.kv[k]):d,
+    kvSet(k,v){db.kv[k]=JSON.stringify(v);save()},
+    save(name,mime,content){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:mime}));a.download=name;document.body.appendChild(a);a.click();a.remove();return'Download/'+name},
+    batteryOk:()=>true,battery(){},
+    here(cb){navigator.geolocation.getCurrentPosition(p=>cb([p.coords.latitude,p.coords.longitude]),()=>cb(null),{enableHighAccuracy:true,timeout:15000})}
+  }})();
+const API=IS_ANDROID?{
+  state:()=>JSON.parse(Android.state()),
+  start:v=>Android.startRec(v),
+  stop:()=>Android.stopRec(),
+  live:(id,from)=>JSON.parse(Android.livePoints(id,from)),
+  tracks:()=>JSON.parse(Android.allTracks()),
+  del:id=>Android.deleteTrack(id),
+  delDemo:()=>Android.deleteDemo(),
+  wipe:()=>Android.deleteAll(),
+  import:arr=>Android.importTracks(JSON.stringify(arr)),
+  kvGet:(k,d)=>{try{const v=Android.kvGet(k);return v?JSON.parse(v):d}catch(e){return d}},
+  kvSet:(k,v)=>Android.kvSet(k,JSON.stringify(v)),
+  save:(n,m,c)=>Android.saveFile(n,m,c),
+  batteryOk:()=>Android.batteryOk(),
+  battery:()=>Android.openBatterySettings(),
+  here(cb){const s=JSON.parse(Android.lastFix());cb(s?[s[0],s[1]]:null)}
+}:MOCK;
+
+/* ================= stato ================= */
+let TRACKS=[];
+let PLACES=API.kvGet('places',[]);
+let ui=API.kvGet('ui',{veh:'scooter',A:null,B:null,vf:'all',rad:'120',sort:'recent',view:[44.06,12.57],zoom:13});
+const saveUi=()=>API.kvSet('ui',ui);
+let SEL=new Map();          // tratte scelte per il confronto: chiave -> {id,i0,i1}
+let SEGS=[];                // tratte A→B correnti
+let hlKey=null;
+let tab='rec';
+function reloadTracks(){try{TRACKS=API.tracks().filter(t=>t.points&&t.points.length>1).sort((a,b)=>b.start-a.start)}catch(e){TRACKS=[];toast('Errore lettura archivio')}}
+
+/* ================= mappa ================= */
+const map=L.map('map',{zoomControl:false}).setView(ui.view||[44.06,12.57],ui.zoom||13);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+map.on('moveend',()=>{const c=map.getCenter();ui.view=[c.lat,c.lng];ui.zoom=map.getZoom();clearTimeout(map._s);map._s=setTimeout(saveUi,800)});
+const L_places=L.layerGroup().addTo(map),L_live=L.layerGroup().addTo(map),L_tra=L.layerGroup(),L_cmp=L.layerGroup(),L_arc=L.layerGroup();
+let meMarker=null;
+$('#locate').onclick=()=>API.here(p=>{if(!p){toast('Posizione non ancora disponibile');return}map.setView(p,16);if(!meMarker)meMarker=L.circleMarker(p,{radius:7,color:'#fff',weight:2,fillColor:'#4fa3ff',fillOpacity:1}).addTo(map);else meMarker.setLatLng(p)});
+
+/* ================= schede ================= */
+function setTab(t){tab=t;$$('.tabs button[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+t));
+  [L_tra,L_cmp,L_arc].forEach(l=>map.removeLayer(l));
+  if(t==='tra'){L_tra.addTo(map);renderTratte(true)}
+  if(t==='cmp'){L_cmp.addTo(map);renderCmp()}
+  if(t==='arc'){L_arc.addTo(map);renderArc()}
+  if(t==='luo')renderPlaces();
+  drawPlaces();disarm();
+}
+$$('.tabs button[data-t]').forEach(b=>b.onclick=()=>{setSheet('');setTab(b.dataset.t)});
+function setSheet(m){const s=$('#sheet');s.classList.remove('min','max');if(m)s.classList.add(m);$('#tgl').textContent=m==='min'?'▴':'▾';setTimeout(()=>map.invalidateSize(),230)}
+$('#tgl').onclick=()=>setSheet($('#sheet').classList.contains('min')?'':'min');
+
+/* ================= LUOGHI ================= */
+let armed=false;
+function arm(){armed=true;const h=$('#hint');h.textContent='Tocca la mappa dove vuoi il luogo';h.style.display='block';setSheet('min')}
+function disarm(){armed=false;$('#hint').style.display='none'}
+map.on('click',e=>{if(!armed)return;disarm();setSheet('');askName([e.latlng.lat,e.latlng.lng])});
+$('#addPlace').onclick=arm;
+$('#addHere').onclick=()=>API.here(p=>p?askName(p):toast('Posizione GPS non disponibile: apri la scheda Registra o attendi il segnale'));
+function askName(p,edit){
+  const f=$('#placeForm');const pl=edit?PLACES.find(x=>x.id===edit):null;
+  f.innerHTML=`<div class="card"><div class="row"><input type="text" id="pName" placeholder="Nome (es. Casa, Ufficio)" style="flex:1" value="${pl?esc(pl.name):''}"><button class="btn pri sm" id="pOk">${pl?'Rinomina':'Salva'}</button><button class="btn sm" id="pNo">✕</button></div></div>`;
+  const inp=$('#pName');inp.focus();
+  $('#pNo').onclick=()=>f.innerHTML='';
+  $('#pOk').onclick=()=>{const n=inp.value.trim()||`Luogo ${PLACES.length+1}`;
+    if(pl)pl.name=n;else PLACES.push({id:'p'+Date.now().toString(36),name:n,lat:+p[0].toFixed(6),lon:+p[1].toFixed(6)});
+    API.kvSet('places',PLACES);f.innerHTML='';renderPlaces();drawPlaces();fillSelects();toast(pl?'Rinominato':`“${n}” aggiunto`)};
+}
+function renderPlaces(){
+  const el=$('#placeList');
+  if(!PLACES.length){el.innerHTML='<div class="card"><b>Nessun luogo</b><p class="mut" style="margin:4px 0 0">Aggiungi i tuoi punti di partenza e arrivo (casa, lavoro, scuola…). Poi in “Tratte” scegli A e B.</p></div>';return}
+  el.innerHTML=PLACES.map(p=>{const n=TRACKS.filter(t=>t.points.some(q=>dP(q,[p.lat,p.lon])<=+ui.rad)).length;
+    return `<div class="item"><span>📍</span><div class="grow"><b>${esc(p.name)}</b><br><span class="mut">${n} tracce passano di qui</span></div><button data-go="${p.id}">◎</button><button data-ed="${p.id}">✎</button><button data-del="${p.id}">🗑</button></div>`}).join('');
+  $$('#placeList [data-go]').forEach(b=>b.onclick=()=>{const p=PLACES.find(x=>x.id===b.dataset.go);map.setView([p.lat,p.lon],16);setSheet('min')});
+  $$('#placeList [data-ed]').forEach(b=>b.onclick=()=>askName(null,b.dataset.ed));
+  $$('#placeList [data-del]').forEach(b=>b.onclick=()=>confirmBtn(b,()=>{PLACES=PLACES.filter(x=>x.id!==b.dataset.del);if(ui.A===b.dataset.del)ui.A=null;if(ui.B===b.dataset.del)ui.B=null;saveUi();API.kvSet('places',PLACES);renderPlaces();drawPlaces();fillSelects()}));
+}
+function confirmBtn(b,fn){if(b.dataset.c!=='1'){const old=b.textContent;b.dataset.c='1';b.textContent='Sicuro?';b.style.background='#ff5d5d';setTimeout(()=>{b.dataset.c='';b.textContent=old;b.style.background=''},3000);return}fn()}
+function drawPlaces(){
+  L_places.clearLayers();const r=+ui.rad;
+  PLACES.forEach(p=>{
+    const isA=p.id===ui.A&&tab==='tra',isB=p.id===ui.B&&tab==='tra';
+    const col=isA?'#2e86ab':isB?'#e4572e':'#ffffff';
+    if(isA||isB)L.circle([p.lat,p.lon],{radius:r,color:col,weight:1,fillOpacity:.13,interactive:false}).addTo(L_places);
+    const m=L.marker([p.lat,p.lon],{draggable:tab==='luo',icon:L.divIcon({className:'',iconSize:null,html:`<span class="plabel" style="border-color:${col}">${isA?'A · ':isB?'B · ':''}${esc(p.name)}</span>`})}).addTo(L_places);
+    m.on('dragend',e=>{const q=e.target.getLatLng();p.lat=+q.lat.toFixed(6);p.lon=+q.lng.toFixed(6);API.kvSet('places',PLACES);drawPlaces()});
+  });
+}
+
+/* ================= REGISTRA ================= */
+let live={id:-1,n:0,pts:[],line:null,wasRec:false};
+function setRecVeh(v){ui.veh=v;saveUi();$$('#recVeh button').forEach(b=>b.classList.toggle('on',b.dataset.v===v))}
+$$('#recVeh button').forEach(b=>b.onclick=()=>{if(live.wasRec){toast('Ferma prima la registrazione');return}setRecVeh(b.dataset.v)});
+$('#recBtn').onclick=()=>{
+  const st=API.state();
+  if(st.rec){API.stop();setTimeout(poll,600);return}
+  const r=API.start(ui.veh);
+  if(r==='noperm'){toast('Concedi il permesso di posizione (“Mentre usi l\'app” e posizione precisa), poi premi di nuovo Avvia',6000);return}
+  if(r!=='ok'){toast('Impossibile avviare: '+r,5000);return}
+  toast(`Registrazione ${vn(ui.veh)} avviata`);setTimeout(poll,800);
+};
+$('#battBtn').onclick=()=>API.battery();
+function poll(){
+  let st;try{st=API.state()}catch(e){return}
+  $('#recBadge').style.display=st.rec?'inline-block':'none';
+  $('#sA').textContent=st.acc>=0?Math.round(st.acc):'–';
+  if(st.rec){
+    if(live.id!==st.track){live={id:st.track,n:0,pts:[],wasRec:true,line:null};L_live.clearLayers();live.line=L.polyline([],{color:'#ff5d5d',weight:5}).addTo(L_live);setRecVeh(st.vehicle)}
+    live.wasRec=true;
+    const add=API.live(st.track,live.pts.length);
+    if(add.length){add.forEach(p=>{live.pts.push(p);live.line.addLatLng(ll(p))});const lp=ll(live.pts[live.pts.length-1]);
+      if(!meMarker)meMarker=L.circleMarker(lp,{radius:7,color:'#fff',weight:2,fillColor:'#4fa3ff',fillOpacity:1}).addTo(map);else meMarker.setLatLng(lp);
+      if(tab==='rec'&&!map.getBounds().pad(-.25).contains(lp))map.panTo(lp)}
+    const pts=live.pts;
+    $('#sT').textContent=fmtDur((Date.now()-st.start)/1000);
+    $('#sD').textContent=fmtKm(pathLen(pts));
+    let v=0;if(pts.length>2){const a=pts[Math.max(0,pts.length-4)],b=pts[pts.length-1];v=dP(a,b)/Math.max(1,(b[2]-a[2])/1000)*3.6}
+    $('#sV').textContent=Math.round(v);
+    $('#recBtn').innerHTML='<span class="rec-dot"></span>■ Ferma e salva';$('#recBtn').className='btn red big';
+  }else{
+    if(live.wasRec){live.wasRec=false;L_live.clearLayers();reloadTracks();const t=TRACKS[0];
+      if(t&&t.id===st.lastFinished)toast(`Salvata: ${fmtDur((t.end-t.start)/1000)} · ${fmtKm(pathLen(t.points))} km`);
+      if(tab==='arc')renderArc();if(tab==='tra')renderTratte()}
+    $('#recBtn').textContent='▶ Avvia registrazione';$('#recBtn').className='btn pri big';
+  }
+  if(IS_ANDROID)$('#battCard').style.display=API.batteryOk()?'none':'block';
+}
+setInterval(poll,2000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')poll()});
+
+/* ================= TRATTE A→B ================= */
+function fillSelects(){
+  const opts=sel=>'<option value="">— scegli —</option>'+PLACES.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.name)}</option>`).join('');
+  $('#selA').innerHTML=opts(ui.A);$('#selB').innerHTML=opts(ui.B);
+}
+$('#selA').onchange=e=>{ui.A=e.target.value||null;saveUi();renderTratte(true)};
+$('#selB').onchange=e=>{ui.B=e.target.value||null;saveUi();renderTratte(true)};
+$('#swap').onclick=()=>{[ui.A,ui.B]=[ui.B,ui.A];saveUi();fillSelects();renderTratte(true)};
+$$('#vehF button').forEach(b=>b.onclick=()=>{ui.vf=b.dataset.v;saveUi();$$('#vehF button').forEach(x=>x.classList.toggle('on',x===b));renderTratte()});
+$('#sort').onchange=e=>{ui.sort=e.target.value;saveUi();renderTratte()};
+$('#rad').onchange=e=>{ui.rad=e.target.value;saveUi();drawPlaces();renderTratte()};
+$('#goCmp').onclick=()=>setTab('cmp');
+const placePt=id=>{const p=PLACES.find(x=>x.id===id);return p?[p.lat,p.lon]:null};
+
+// tutti i passaggi A→B dentro una traccia: partenza = ultimo punto nella zona A, arrivo = primo punto nella zona B
+function traversals(track,A,B,r){
+  const pts=track.points,out=[];let i=0;
+  while(i<pts.length){
+    while(i<pts.length&&dP(pts[i],A)>r)i++;
+    if(i>=pts.length)break;
+    let dep=i,j=i+1;
+    for(;j<pts.length;j++){if(dP(pts[j],A)<=r)dep=j;else if(dP(pts[j],B)<=r)break}
+    if(j>=pts.length)break;
+    const s=mkSeg(track,dep,j);if(s.dur>0)out.push(s);
+    i=j+1;
+  }
+  return out;
+}
+function mkSeg(track,i0,i1){const p=track.points;const s={track,i0,i1,t0:p[i0][2],t1:p[i1][2],key:`${track.id}:${i0}:${i1}`};s.dur=(s.t1-s.t0)/1000;s.len=pathLen(p,i0,i1);s.v=fmtV(s.len,s.dur);return s}
+function signature(pts,i0,i1,N=24){
+  const seg=pts.slice(i0,i1+1),Lt=pathLen(seg),out=[seg[0]];if(Lt===0)return Array(N).fill(seg[0]);
+  let acc=0,k=1;
+  for(let n=1;n<N-1;n++){const target=Lt*n/(N-1);
+    while(k<seg.length&&acc+dP(seg[k-1],seg[k])<target){acc+=dP(seg[k-1],seg[k]);k++}
+    if(k>=seg.length){out.push(seg[seg.length-1]);continue}
+    const d=dP(seg[k-1],seg[k]),f=d?(target-acc)/d:0;
+    out.push([seg[k-1][0]+(seg[k][0]-seg[k-1][0])*f,seg[k-1][1]+(seg[k][1]-seg[k-1][1])*f]);
+  }
+  out.push(seg[seg.length-1]);return out;
+}
+const sigMean=(a,b)=>{let s=0;for(let i=0;i<a.length;i++)s+=dP(a[i],b[i]);return s/a.length};
+const sigMax=(a,b)=>{let m=0;for(let i=0;i<a.length;i++)m=Math.max(m,dP(a[i],b[i]));return m};
+
+function renderTratte(fit){
+  const out=$('#traOut');L_tra.clearLayers();drawPlaces();SEGS=[];updCmpBtn();
+  const A=placePt(ui.A),B=placePt(ui.B);
+  if(PLACES.length<2){out.innerHTML='<div class="card"><b>Servono almeno due luoghi</b><p class="mut" style="margin:4px 0 0">Vai nella scheda 📍 Luoghi e aggiungi partenza e arrivo.</p></div>';return}
+  if(!A||!B||ui.A===ui.B){out.innerHTML='<p class="mut">Scegli il luogo di partenza (A) e quello di arrivo (B).</p>';return}
+  const r=+ui.rad,ab=dP(A,B);
+  if(fit)map.fitBounds([A,B],{padding:[50,50]});
+  if(ab<2.2*r){out.innerHTML=`<p class="mut">A e B distano solo ${Math.round(ab)} m: riduci il raggio.</p>`;return}
+  let segs=[];TRACKS.forEach(t=>{if(ui.vf==='all'||t.vehicle===ui.vf)segs.push(...traversals(t,A,B,r))});
+  if(!segs.length){out.innerHTML=`<div class="card"><b>Nessuna tratta trovata</b><p class="mut" style="margin:4px 0 0">Nessuna traccia${ui.vf!=='all'?' '+vn(ui.vf):''} passa prima da A e poi da B. Prova ⇄ per il verso opposto o aumenta il raggio.</p></div>`;return}
+  // raggruppo le tratte per strada seguita
+  const thrMean=Math.max(80,ab*.04),thrMax=Math.max(250,ab*.12),routes=[];
+  [...segs].sort((a,b)=>a.t0-b.t0).forEach(s=>{s.sig=signature(s.track.points,s.i0,s.i1);let best=null,bd=1e9;
+    routes.forEach(R=>{const d=sigMean(s.sig,R.sig);if(d<bd&&d<thrMean&&sigMax(s.sig,R.sig)<thrMax){bd=d;best=R}});
+    if(best)best.segs.push(s);else routes.push({sig:s.sig,segs:[s]})});
+  routes.sort((a,b)=>b.segs.length-a.segs.length).forEach((R,i)=>{R.n=i+1;R.col=PAL[i%PAL.length];R.len=median(R.segs.map(s=>s.len));R.med=median(R.segs.map(s=>s.dur));R.segs.forEach(s=>s.route=R)});
+  SEGS=segs.sort(ui.sort==='fast'?(a,b)=>a.dur-b.dur:(a,b)=>b.t0-a.t0);
+
+  // riepilogo per mezzo
+  const byV={};segs.forEach(s=>(byV[s.track.vehicle]=byV[s.track.vehicle]||[]).push(s));
+  let h=`<div class="card good"><h3>${segs.length} tratte ${esc(PLACES.find(p=>p.id===ui.A).name)} → ${esc(PLACES.find(p=>p.id===ui.B).name)}</h3><table><tr><th>Mezzo</th><th>n</th><th>migliore</th><th>tipico</th><th>vel. media</th></tr>`;
+  Object.keys(byV).forEach(v=>{const a=byV[v],ds=a.map(s=>s.dur);h+=`<tr><td>${vi(v)} ${vn(v)}</td><td>${a.length}</td><td class="best">${fmtDur(Math.min(...ds))}</td><td>${fmtDur(median(ds))}</td><td>${fmtV(a.reduce((x,s)=>x+s.len,0),a.reduce((x,s)=>x+s.dur,0))} km/h</td></tr>`});
+  h+='</table></div>';
+  // strade alternative e fasce orarie
+  if(routes.length>1){
+    const rows=BANDS.map((b,bi)=>({bi,c:routes.map(R=>{const d=R.segs.filter(s=>bandOf(s.t0)===bi).map(s=>s.dur);return d.length?{m:median(d),n:d.length}:null})})).filter(x=>x.c.some(Boolean));
+    const nowB=bandOf(Date.now());
+    h+=`<div class="card"><h3>Strade diverse e fasce orarie</h3><div class="mut" style="margin-bottom:6px">${routes.map(R=>`<span class="dot" style="background:${R.col}"></span>Strada ${R.n}: ${fmtKm(R.len)} km, ${R.segs.length} volte`).join(' &nbsp; ')}</div>
+      <table><tr><th>Ora</th>${routes.map(R=>`<th><span class="dot" style="background:${R.col}"></span>S${R.n}</th>`).join('')}</tr>`;
+    rows.forEach(x=>{const vals=x.c.filter(Boolean).map(c=>c.m),mn=Math.min(...vals);
+      h+=`<tr${x.bi===nowB?' style="background:#ffb40018"':''}><td>${BANDS[x.bi][2]}${x.bi===nowB?' ◂ ora':''}</td>${x.c.map(c=>c?`<td class="${c.m===mn&&vals.length>1?'best':''}">${fmtMin(c.m)}<span class="mut">·${c.n}</span></td>`:'<td class="mut">–</td>').join('')}</tr>`});
+    h+='</table><p class="mut" style="margin:6px 0 0">Tempo tipico per fascia oraria · numero di tratte. In verde la strada più rapida.</p></div>';
+  }
+  h+=`<div class="card"><h3>Tutte le tratte</h3><p class="mut" style="margin:0">Tocca una tratta per vederla sulla mappa; spunta ☑ quelle da confrontare.</p>`;
+  h+=SEGS.map(s=>`<div class="item${s.key===hlKey?' hl':''}" data-k="${s.key}"><input type="checkbox" class="ck" data-ck="${s.key}" ${SEL.has(s.key)?'checked':''}><span class="dot" style="background:${s.route.col}" title="Strada ${s.route.n}"></span><div class="grow"><b>${dd(s.t0)}</b> · ${hh(s.t0)}→${hh(s.t1)} ${vi(s.track.vehicle)}<br><span class="mut">${fmtKm(s.len)} km · ${s.v} km/h media · strada ${s.route.n}</span></div><b class="dur">${fmtDur(s.dur)}</b></div>`).join('');
+  h+='</div>';
+  out.innerHTML=h;
+  $$('#traOut [data-ck]').forEach(c=>{c.onclick=e=>e.stopPropagation();c.onchange=()=>{const s=SEGS.find(x=>x.key===c.dataset.ck);if(c.checked){if(SEL.size>=6){c.checked=false;toast('Massimo 6 tratte nel confronto');return}SEL.set(s.key,{id:s.track.id,i0:s.i0,i1:s.i1})}else SEL.delete(s.key);updCmpBtn()}});
+  $$('#traOut .item[data-k]').forEach(it=>it.onclick=()=>{hlKey=hlKey===it.dataset.k?null:it.dataset.k;$$('#traOut .item').forEach(x=>x.classList.toggle('hl',x.dataset.k===hlKey));drawTra();
+    const s=SEGS.find(x=>x.key===hlKey);if(s){map.fitBounds(L.latLngBounds(s.track.points.slice(s.i0,s.i1+1).map(ll)),{padding:[40,40]})}});
+  drawTra();
+}
+function drawTra(){
+  L_tra.clearLayers();
+  const hs=SEGS.find(s=>s.key===hlKey);
+  [...SEGS].reverse().forEach(s=>{if(s===hs)return;L.polyline(s.track.points.slice(s.i0,s.i1+1).map(ll),{color:s.route.col,weight:4,opacity:hs?.18:.5}).addTo(L_tra)});
+  if(hs)L.polyline(hs.track.points.slice(hs.i0,hs.i1+1).map(ll),{color:'#fff',weight:8,opacity:.9}).addTo(L_tra),L.polyline(hs.track.points.slice(hs.i0,hs.i1+1).map(ll),{color:hs.route.col,weight:5}).addTo(L_tra);
+}
+function updCmpBtn(){const b=$('#goCmp');b.textContent=`⚖ Confronta (${SEL.size})`;b.disabled=SEL.size<2}
+
+/* ================= CONFRONTA ================= */
+function resolveSel(){const out=[];SEL.forEach((v,k)=>{const t=TRACKS.find(t=>t.id===v.id);if(!t||v.i1>=t.points.length){SEL.delete(k);return}out.push(mkSeg(t,v.i0,v.i1))});return out}
+function segStats(s){
+  const p=s.track.points;let vmax=0,stop=0;
+  for(let i=s.i0+1;i<=s.i1;i++){const dt=(p[i][2]-p[i-1][2])/1000,d=dP(p[i-1],p[i]);if(dt>0&&d/dt*3.6<3)stop+=dt;
+    // velocità massima su finestre di almeno 20 s, per evitare i picchi del GPS
+    let j=i,tt=0,dd2=0;while(j>s.i0&&tt<20){tt+=(p[j][2]-p[j-1][2])/1000;dd2+=dP(p[j-1],p[j]);j--}if(tt>=20)vmax=Math.max(vmax,dd2/tt*3.6)}
+  return{vmax:Math.round(vmax),stop};
+}
+function renderCmp(){
+  const out=$('#cmpOut');L_cmp.clearLayers();
+  const segs=resolveSel();updCmpBtn();
+  if(segs.length<2){out.innerHTML=`<div class="card"><b>Seleziona almeno 2 tratte</b><p class="mut" style="margin:4px 0 0">In “Tratte” spunta ☑ le tratte A→B da confrontare, oppure in “Archivio” spunta tracce intere.</p></div>${segs.length?'<button class="btn sm" id="cmpClr" style="margin-top:10px">Svuota selezione</button>':''}`;
+    if($('#cmpClr'))$('#cmpClr').onclick=()=>{SEL.clear();renderCmp()};return}
+  segs.forEach((s,i)=>{s.col=PAL[i%PAL.length];s.st=segStats(s)});
+  const best=Math.min(...segs.map(s=>s.dur));
+  const bounds=L.latLngBounds([]);
+  [...segs].reverse().forEach(s=>{const pl=s.track.points.slice(s.i0,s.i1+1).map(ll);L.polyline(pl,{color:'#000',weight:8,opacity:.35}).addTo(L_cmp);L.polyline(pl,{color:s.col,weight:5}).addTo(L_cmp);pl.forEach(q=>bounds.extend(q))});
+  map.fitBounds(bounds,{padding:[30,30]});
+  const col=(f,cls)=>segs.map(s=>`<td${cls?` class="${cls(s)}"`:''}>${f(s)}</td>`).join('');
+  let h=`<div class="card"><table>
+   <tr><th></th>${segs.map((s,i)=>`<th><span class="dot" style="background:${s.col}"></span>${i+1}</th>`).join('')}</tr>
+   <tr><td>Mezzo</td>${col(s=>vi(s.track.vehicle))}</tr>
+   <tr><td>Giorno</td>${col(s=>dd(s.t0))}</tr>
+   <tr><td>Partenza</td>${col(s=>hh(s.t0))}</tr>
+   <tr><td>Arrivo</td>${col(s=>hh(s.t1))}</tr>
+   <tr><td>Tempo</td>${col(s=>fmtDur(s.dur),s=>s.dur===best?'best':'')}</tr>
+   <tr><td>Distacco</td>${col(s=>s.dur===best?'—':'+'+fmtDur(s.dur-best))}</tr>
+   <tr><td>Distanza km</td>${col(s=>fmtKm(s.len))}</tr>
+   <tr><td>Vel. media</td>${col(s=>s.v+' km/h')}</tr>
+   <tr><td>Vel. max</td>${col(s=>s.st.vmax+' km/h')}</tr>
+   <tr><td>Fermo</td>${col(s=>fmtDur(s.st.stop))}</tr>
+  </table><p class="mut" style="margin:6px 0 0">“Fermo” = tempo sotto i 3 km/h (semafori, code). Vel. max calcolata su almeno 20 s.</p></div>`;
+  h+=`<div class="card"><h3>Andamento: tempo trascorso per km percorso</h3>${chart(segs)}<p class="mut" style="margin:4px 0 0">Più la linea è bassa, più si è in vantaggio. I tratti piatti verso l'alto sono le soste.</p></div>`;
+  h+=`<div class="card">${segs.map((s,i)=>`<div class="item"><span class="dot" style="background:${s.col}"></span><div class="grow">${i+1}. ${dd(s.t0)} ${hh(s.t0)} ${vi(s.track.vehicle)}</div><button data-rm="${s.key}">Togli</button></div>`).join('')}<button class="btn sm" id="cmpClr" style="margin-top:8px">Svuota selezione</button></div>`;
+  out.innerHTML=h;
+  $$('#cmpOut [data-rm]').forEach(b=>b.onclick=()=>{SEL.delete(b.dataset.rm);renderCmp()});
+  $('#cmpClr').onclick=()=>{SEL.clear();renderCmp()};
+}
+function chart(segs){
+  const W=330,H=190,ml=34,mb=22,mt=8,mr=8;
+  const series=segs.map(s=>{const p=s.track.points;let d=0;const a=[[0,0]];for(let i=s.i0+1;i<=s.i1;i++){d+=dP(p[i-1],p[i]);a.push([d/1000,(p[i][2]-p[s.i0][2])/60000])}return{a,col:s.col}});
+  const maxX=Math.max(...series.map(s=>s.a[s.a.length-1][0]))||1,maxY=Math.max(...series.map(s=>s.a[s.a.length-1][1]))||1;
+  const X=x=>ml+x/maxX*(W-ml-mr),Y=y=>H-mb-y/maxY*(H-mb-mt);
+  const nice=m=>{const st=[.1,.2,.5,1,2,5,10,20,50];return st.find(s=>m/s<=6)||100};
+  let g='';const sx=nice(maxX),sy=nice(maxY);
+  for(let x=0;x<=maxX+1e-9;x+=sx)g+=`<line x1="${X(x)}" x2="${X(x)}" y1="${mt}" y2="${H-mb}" stroke="#2c3440"/><text x="${X(x)}" y="${H-6}" text-anchor="middle">${+x.toFixed(1)}</text>`;
+  for(let y=0;y<=maxY+1e-9;y+=sy)g+=`<line x1="${ml}" x2="${W-mr}" y1="${Y(y)}" y2="${Y(y)}" stroke="#2c3440"/><text x="${ml-4}" y="${Y(y)+3}" text-anchor="end">${+y.toFixed(1)}′</text>`;
+  const lines=series.map(s=>`<polyline fill="none" stroke="${s.col}" stroke-width="2.2" points="${s.a.map(q=>X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join(' ')}"/>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${g}${lines}<text x="${W-mr}" y="${H-mb-4}" text-anchor="end">km</text></svg>`;
+}
+
+/* ================= ARCHIVIO ================= */
+function renderArc(){
+  const el=$('#arcList');L_arc.clearLayers();
+  if(!TRACKS.length){el.innerHTML='<p class="mut">Nessuna traccia salvata.</p>';return}
+  const tot=TRACKS.reduce((s,t)=>s+pathLen(t.points),0);
+  el.innerHTML=`<p class="mut">${TRACKS.length} tracce · ${fmtKm(tot)} km totali. ☑ = aggiungi al confronto.</p>`+TRACKS.map(t=>{const len=pathLen(t.points),dur=(t.end-t.start)/1000,k=`${t.id}:0:${t.points.length-1}`;
+    return `<div class="item"><input type="checkbox" class="ck" data-ck="${k}" data-id="${t.id}" ${SEL.has(k)?'checked':''}><span style="font-size:20px">${vi(t.vehicle)}</span><div class="grow"><b>${dd(t.start)}</b> ${hh(t.start)}${t.demo?' <span class="mut">demo</span>':''}<br><span class="mut">${fmtDur(dur)} · ${fmtKm(len)} km · ${fmtV(len,dur)} km/h</span></div><button data-s="${t.id}">👁</button><button data-d="${t.id}">🗑</button></div>`}).join('');
+  $$('#arcList [data-ck]').forEach(c=>c.onchange=()=>{const t=TRACKS.find(x=>String(x.id)===c.dataset.id);if(c.checked){if(SEL.size>=6){c.checked=false;toast('Massimo 6 nel confronto');return}SEL.set(c.dataset.ck,{id:t.id,i0:0,i1:t.points.length-1})}else SEL.delete(c.dataset.ck);updCmpBtn();toast(`${SEL.size} nel confronto`,1200)});
+  $$('#arcList [data-s]').forEach(b=>b.onclick=()=>{const t=TRACKS.find(x=>String(x.id)===b.dataset.s);L_arc.clearLayers();const pl=L.polyline(t.points.map(ll),{color:'#4fa3ff',weight:5}).addTo(L_arc);map.fitBounds(pl.getBounds(),{padding:[30,30]});setSheet('min')});
+  $$('#arcList [data-d]').forEach(b=>b.onclick=()=>confirmBtn(b,()=>{API.del(+b.dataset.d);reloadTracks();renderArc()}));
+}
+const stamp=()=>new Date().toISOString().slice(0,10);
+$('#expJ').onclick=()=>{if(!TRACKS.length)return toast('Archivio vuoto');const p=API.save(`tracce-backup-${stamp()}.json`,'application/json',JSON.stringify({app:'TracceAB',v:2,places:PLACES,tracks:TRACKS.map(t=>({vehicle:t.vehicle,start:t.start,end:t.end,demo:t.demo,points:t.points}))}));toast('Salvato in '+p,4000)};
+$('#expG').onclick=()=>{if(!TRACKS.length)return toast('Archivio vuoto');
+  const g=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Tracce A-B" xmlns="http://www.topografix.com/GPX/1/1">\n`+PLACES.map(p=>`<wpt lat="${p.lat}" lon="${p.lon}"><name>${esc(p.name)}</name></wpt>`).join('\n')+'\n'+TRACKS.map(t=>`<trk><name>${vn(t.vehicle)} ${dd(t.start)} ${hh(t.start)}</name><type>${t.vehicle}</type><trkseg>${t.points.map(p=>`<trkpt lat="${p[0]}" lon="${p[1]}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n')+'\n</gpx>';
+  toast('Salvato in '+API.save(`tracce-${stamp()}.gpx`,'application/gpx+xml',g),4000)};
+$('#imp').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const txt=await f.text();let arr=[],np=0;
+    if(/^\s*[\[{]/.test(txt)){const j=JSON.parse(txt);arr=(j.tracks||j).filter(t=>t.points);
+      (j.places||[]).forEach(p=>{if(!PLACES.some(q=>dP([q.lat,q.lon],[p.lat,p.lon])<20)){PLACES.push({id:'p'+Math.random().toString(36).slice(2,8),name:p.name,lat:p.lat,lon:p.lon});np++}})}
+    else{const x=new DOMParser().parseFromString(txt,'application/xml');
+      [...x.getElementsByTagName('trk')].forEach(trk=>{
+        const pts=[...trk.getElementsByTagName('trkpt')].map(p=>{const tm=p.getElementsByTagName('time')[0];return[+p.getAttribute('lat'),+p.getAttribute('lon'),tm?Date.parse(tm.textContent):NaN,0]}).filter(p=>!isNaN(p[2]));
+        if(pts.length<2)return;const ty=(trk.getElementsByTagName('type')[0]||{}).textContent;
+        arr.push({vehicle:VEH[ty]?ty:ui.veh,start:pts[0][2],end:pts[pts.length-1][2],points:pts})});
+      [...x.getElementsByTagName('wpt')].forEach(w=>{const n=(w.getElementsByTagName('name')[0]||{}).textContent||'Luogo';const p=[+w.getAttribute('lat'),+w.getAttribute('lon')];if(!PLACES.some(q=>dP([q.lat,q.lon],p)<20)){PLACES.push({id:'p'+Math.random().toString(36).slice(2,8),name:n,lat:p[0],lon:p[1]});np++}});
+    }
+    // evita doppioni (stessa partenza e stesso mezzo)
+    arr=arr.filter(t=>!TRACKS.some(x=>x.start===t.start&&x.vehicle===t.vehicle));
+    const n=arr.length?API.import(arr):0;if(np)API.kvSet('places',PLACES);
+    reloadTracks();renderArc();fillSelects();drawPlaces();toast(`Importate ${n} tracce${np?` e ${np} luoghi`:''}`);
+  }catch(err){toast('File non leggibile')}
+};
+$('#wipe').onclick=function(){confirmBtn(this,()=>{API.wipe();SEL.clear();reloadTracks();renderArc();toast('Archivio svuotato')})};
+$('#delDemo').onclick=()=>{API.delDemo();reloadTracks();renderArc();toast('Dati demo eliminati')};
+$('#demo').onclick=()=>{
+  const A=placePt(ui.A),B=placePt(ui.B);
+  if(!A||!B){toast('Prima scegli A e B nella scheda Tratte');return}
+  const mid=[(A[0]+B[0])/2,(A[1]+B[1])/2],dx=B[1]-A[1],dy=B[0]-A[0];
+  const via=k=>[A,[mid[0]+dx*k*.35,mid[1]-dy*k*.35],B];
+  const V=[{w:via(0),base:1,rush:1.7},{w:via(1),base:1.18,rush:1.15},{w:via(-1.2),base:1.3,rush:1.25}];
+  const SPD={scooter:9,bici:5,auto:11},vs=['scooter','bici','auto'],arr=[],now=Date.now();
+  for(let d=0;d<30;d++)for(let k=0;k<2;k++){
+    const veh=ui.vf!=='all'?ui.vf:vs[Math.floor(Math.random()*3)];
+    const hr=[7.5,8.5,9,12.5,13,17.5,18,20,11,15][Math.floor(Math.random()*10)];
+    const day=new Date(now-(d+1)*864e5);day.setHours(Math.floor(hr),Math.round((hr%1)*60)+Math.floor(Math.random()*20),0,0);
+    const v=V[Math.floor(Math.random()*3)],rush=(hr>=7.5&&hr<9.5)||(hr>=17&&hr<19)?v.rush:1;
+    const wp=[[A[0]-dy*.08,A[1]-dx*.08],...v.w,[B[0]+dy*.08,B[1]+dx*.08]],pts=[];let t=day.getTime();
+    for(let w=1;w<wp.length;w++){const p0=wp[w-1],p1=wp[w],Ls=dP(p0,p1),st=Math.max(2,Math.round(Ls/60));
+      for(let s=0;s<st;s++){const f=s/st,j=()=>(Math.random()-.5)*8e-5;pts.push([p0[0]+(p1[0]-p0[0])*f+j(),p0[1]+(p1[1]-p0[1])*f+j(),Math.round(t),8]);t+=(Ls/st)/SPD[veh]*v.base*rush*(.8+Math.random()*.4)*1000*(Math.random()<.05?4:1)}}
+    pts.push([...wp[wp.length-1],Math.round(t),8]);
+    arr.push({vehicle:veh,start:pts[0][2],end:t,demo:1,points:pts});
+  }
+  const n=API.import(arr);reloadTracks();renderArc();toast(`${n} tracce demo create: vai in “Tratte”`);
+};
+
+/* ================= versione e aggiornamenti ================= */
+function showVersion(){
+  if(!IS_ANDROID){$('#verInfo').textContent='Versione browser (anteprima)';$('#updBtn').style.display='none';return}
+  try{const v=JSON.parse(Android.appInfo());$('#verInfo').textContent=`Versione ${v.apk}.${v.web}${v.updates?' · aggiornamenti automatici attivi':''}`}catch(e){}
+}
+$('#updBtn').onclick=()=>{toast('Controllo aggiornamenti…');Android.checkUpdate()};
+
+/* ================= avvio ================= */
+(function init(){
+  reloadTracks();setRecVeh(ui.veh||'scooter');fillSelects();
+  $('#rad').value=ui.rad||'120';$('#sort').value=ui.sort||'recent';
+  $$('#vehF button').forEach(b=>b.classList.toggle('on',b.dataset.v===(ui.vf||'all')));
+  drawPlaces();poll();showVersion();
+  if(!PLACES.length)setTimeout(()=>toast('Inizia aggiungendo i tuoi luoghi nella scheda 📍 Luoghi',4000),800);
+})();
+</script>
+</body>
+</html>

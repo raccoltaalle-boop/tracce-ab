@@ -1,0 +1,49 @@
+TRACCE A-B  -  app Android per registrare tracce GPS e confrontare i tempi tra due luoghi
+
+COME OTTENERE L'APK
+1. Doppio clic su COMPILA.bat
+   - La prima volta scarica JDK 17, Android SDK e Gradle in
+     %LOCALAPPDATA%\TracceAB-build (circa 1,5 GB, 10-20 minuti).
+   - Alla fine trovi TracceAB.apk in questa cartella.
+   - Se qualcosa va storto, il dettaglio e' in build.log.
+2. Copia TracceAB.apk sul telefono (cavo USB, Google Drive, Telegram...)
+   e aprilo. Android chiedera' di consentire l'installazione da "origini
+   sconosciute": consentila per l'app con cui apri il file.
+   Se Play Protect avvisa, scegli "Installa comunque" (l'app non e'
+   firmata per il Play Store, solo con la chiave di sviluppo del tuo PC).
+   Se il telefono e' collegato via USB con il debug USB attivo,
+   lo script la installa da solo.
+
+PRIMO AVVIO SUL TELEFONO
+- Consenti la posizione "Mentre usi l'app" con "Posizione precisa" attiva.
+- Consenti le notifiche: servono per la notifica fissa che tiene vivo il GPS.
+- Nella scheda Registra, se compare l'avviso batteria, tocca "Apri impostazione"
+  e scegli "Consenti" (o "Senza restrizioni"). Su Xiaomi/Huawei/Oppo
+  controlla anche "Avvio automatico" e "Risparmio energetico" dell'app.
+
+USO
+- Registra : scegli il mezzo (scooter, bici, auto) e premi Avvia. Puoi
+  spegnere lo schermo. Si ferma dall'app o dalla notifica.
+- Luoghi   : aggiungi i tuoi punti (casa, ufficio...) toccando la mappa.
+- Tratte   : scegli A e B. Vedi tutte le tratte registrate tra i due luoghi
+  con mezzo, orario, tempo e velocita' media, le strade alternative e la
+  strada piu' veloce per fascia oraria.
+- Confronta: spunta 2-6 tratte e confrontale (tabella, mappa e grafico).
+- Archivio : elenco tracce, esportazione GPX e backup, importazione.
+  I file esportati finiscono in Download/TracceAB sul telefono.
+
+AGGIORNAMENTI (automatici)
+Le modifiche vengono pubblicate su GitHub: GitHub Actions compila l'APK e lo
+mette nel branch "dist" del repository. All'avvio l'app controlla:
+- interfaccia nuova -> la scarica, verifica l'impronta SHA-256 e si ricarica da sola;
+- APK nuovo (cambi al codice nativo) -> chiede "Aggiorna", lo installa, i dati restano.
+Il pulsante "Aggiornamenti" in fondo alla scheda Archivio forza il controllo.
+
+CHIAVE DI FIRMA - IMPORTANTE
+La cartella "CHIAVE-FIRMA" contiene la chiave con cui sono firmati gli APK.
+Conservane una copia (chiavetta, NAS). Se andasse persa, gli aggiornamenti
+non si installerebbero piu' e bisognerebbe disinstallare l'app (perdendo i dati,
+salvo backup dalla scheda Archivio). Non pubblicarla e non metterla nel repository.
+
+COMPILA.bat resta solo come alternativa offline: produce un APK firmato con
+la chiave di debug del PC, che NON e' compatibile con quello di GitHub.

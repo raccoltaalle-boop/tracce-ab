@@ -1,0 +1,88 @@
+name: Compila e pubblica
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Versione interfaccia
+        run: echo "${{ github.run_number }}" > app/src/main/assets/webversion.txt
+
+      - name: Chiave di firma
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then echo "Manca il secret KEYSTORE_B64"; exit 1; fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Compila APK
+        env:
+          KS_FILE: ${{ runner.temp }}/release.jks
+          KS_PASS: ${{ secrets.KEYSTORE_PASS }}
+          UPDATE_BASE: https://raw.githubusercontent.com/${{ github.repository }}/dist/
+        run: gradle --no-daemon --console=plain assembleRelease
+
+      - name: Prepara pacchetto aggiornamento
+        run: |
+          set -e
+          rm -rf dist && mkdir -p dist/web
+          cp app/src/main/assets/index.html app/src/main/assets/leaflet.js app/src/main/assets/leaflet.css dist/web/
+          cp app/build/outputs/apk/release/app-release.apk dist/tracce-ab.apk
+          python3 - <<'PY'
+          import json, hashlib, os
+          h = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
+          notes = open('NOVITA.txt', encoding='utf-8').read().strip() if os.path.exists('NOVITA.txt') else ''
+          v = {
+            "web": int(os.environ["GITHUB_RUN_NUMBER"]),
+            "minApk": int(open('app/web-min-apk.txt').read().strip()),
+            "apk": int(open('app/version.txt').read().strip()),
+            "apkSha256": h('dist/tracce-ab.apk'),
+            "files": {f: h('dist/web/' + f) for f in sorted(os.listdir('dist/web'))},
+            "notes": notes,
+            "commit": os.environ["GITHUB_SHA"][:7],
+          }
+          json.dump(v, open('dist/version.json', 'w'), indent=1, ensure_ascii=False)
+          print(json.dumps(v, indent=1, ensure_ascii=False))
+          PY
+          cat > dist/README.md <<EOF
+          # Tracce A→B — ultima versione
+          Scarica e installa: [tracce-ab.apk](https://github.com/${{ github.repository }}/raw/dist/tracce-ab.apk)
+          Build ${{ github.run_number }} · commit ${GITHUB_SHA::7}
+          EOF
+
+      - name: Pubblica sul branch dist
+        run: |
+          set -e
+          cd dist
+          git init -q
+          git checkout -q -b dist
+          git add -A
+          git -c user.name="tracce-bot" -c user.email="tracce-bot@users.noreply.github.com" commit -qm "Build ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tracce-ab-${{ github.run_number }}
+          path: dist/tracce-ab.apk
