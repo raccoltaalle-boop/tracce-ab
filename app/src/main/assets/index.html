@@ -63,6 +63,14 @@ td.best{color:var(--ok);font-weight:700}
 .fab{position:absolute;right:10px;bottom:12px;z-index:1000;border:0;border-radius:50%;width:46px;height:46px;background:var(--panel);color:#fff;font-size:20px;box-shadow:0 2px 8px #0009}
 svg text{fill:var(--mut);font-size:10px}
 .leaflet-container{background:#1b1f26}
+.modal{position:fixed;inset:0;background:#000b;z-index:3000;display:flex;align-items:flex-end}
+.modal .box{background:var(--panel);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px #000a}
+.modal h3{margin:0 0 4px;font-size:16px}
+.modal textarea{width:100%;min-height:70px;background:var(--chip);color:var(--tx);border:0;border-radius:10px;padding:10px;font:14px system-ui,sans-serif;margin-top:10px;resize:vertical}
+.tagchips{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.tagchips button{border:2px solid var(--line);background:var(--bg);color:var(--tx);border-radius:12px;padding:10px 6px;font-size:14px;font-weight:600}
+.tagchips button.on{border-color:var(--acc);background:#ffb40022}
+.note{background:#ffb40012;border-left:3px solid var(--acc);border-radius:8px;padding:6px 9px;margin-top:8px;font-size:13px}
 #legend{position:absolute;left:8px;bottom:8px;z-index:1000;background:#14181fe6;border-radius:10px;padding:6px 8px;font-size:11px;display:none;line-height:1.5}
 #legend i{display:inline-block;width:16px;height:5px;border-radius:3px;margin-right:5px;vertical-align:middle}
 .rechead{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;font-size:12.5px;color:var(--mut)}
@@ -149,6 +157,12 @@ svg text{fill:var(--mut);font-size:10px}
   </div>
 </div>
 <div id="toast"></div>
+<div class="modal" id="noteModal" style="display:none"><div class="box">
+  <h3 id="nmTitle">Nota</h3><div class="mut" id="nmSub"></div>
+  <div class="tagchips" id="nmTags"></div>
+  <textarea id="nmText" placeholder="Nota libera (facoltativa): es. incidente sulla statale, sosta al bar…"></textarea>
+  <div class="row" style="margin-top:12px"><button class="btn" id="nmSkip" style="flex:1">Salta</button><button class="btn pri" id="nmSave" style="flex:2">Salva nota</button></div>
+</div></div>
 
 <script>
 "use strict";
@@ -221,10 +235,40 @@ function detailCard(track,i0,i1,title){
   const slow=sp.filter(s=>speedClass(s.v,track.vehicle)===0).length;
   return `<div class="card det"><h3><span>${title}</span><button data-close="1">✕</button></h3>
    <div class="mut">${vi(track.vehicle)} ${vn(track.vehicle)} · ${dd(p[i0][2])} ${hh(p[i0][2])}→${hh(p[i1][2])}</div>
+   ${noteBlock(track)}<button class="btn sm" data-note="1" style="margin-top:8px">✎ ${noteOf(track)?'Modifica nota':'Aggiungi nota'}</button>
    <div class="stats"><div class="stat"><b>${fmtDur(dur)}</b><span>durata</span></div><div class="stat"><b>${fmtKm(len)}</b><span>km</span></div><div class="stat"><b>${fmtV(len,dur)}</b><span>media km/h</span></div><div class="stat"><b>${st.vmax}</b><span>max km/h</span></div></div>
    <h3 style="margin-top:10px">Velocità ogni 100 m</h3>${speedBars(sp,track.vehicle)}
    <p class="mut" style="margin:4px 0 0">${sp.length} tratti da 100 m · ${slow} molto lenti (rosso) · fermo ${fmtDur(st.stop)}. Tocca la linea sulla mappa per la velocità di ogni tratto.</p></div>`;
 }
+
+/* ================= note sulle tracce ================= */
+const TAGS=[['traffico','🚦','Traffico'],['sosta','⏸️','Sosta'],['pioggia','🌧️','Pioggia'],['lavori','🚧','Lavori in corso']];
+const tagIcon=k=>(TAGS.find(x=>x[0]===k)||[0,''])[1];
+// le note sono legate all'orario di partenza della traccia (resta valido anche dopo backup/ripristino)
+const noteOf=t=>t&&NOTES[String(t.start)]||null;
+function noteBadge(t){const n=noteOf(t);if(!n)return'';const tx=n.text?(n.text.length>38?n.text.slice(0,38)+'…':n.text):'';
+  return `<br><span class="mut">${n.tags.map(tagIcon).join(' ')}${n.tags.length&&tx?' ':''}${tx?'“'+esc(tx)+'”':''}</span>`}
+function noteBlock(t){const n=noteOf(t);if(!n)return'';return `<div class="note">${n.tags.map(k=>tagIcon(k)+' '+(TAGS.find(x=>x[0]===k)||[0,0,k])[2]).join(' · ')}${n.text?(n.tags.length?'<br>':'')+esc(n.text):''}</div>`}
+let noteCb=null;
+function openNote(t,title,cb){
+  const n=noteOf(t)||{tags:[],text:''},sel=new Set(n.tags);
+  $('#nmTitle').textContent=title||'Nota sulla traccia';
+  $('#nmSub').textContent=`${vi(t.vehicle)} ${dd(t.start)} ${hh(t.start)} · ${fmtDur((t.end-t.start)/1000)} · ${fmtKm(pathLen(t.points))} km`;
+  $('#nmTags').innerHTML=TAGS.map(([k,i,l])=>`<button data-tag="${k}" class="${sel.has(k)?'on':''}">${i} ${l}</button>`).join('');
+  $$('#nmTags button').forEach(b=>b.onclick=()=>{const k=b.dataset.tag;sel.has(k)?sel.delete(k):sel.add(k);b.classList.toggle('on')});
+  $('#nmText').value=n.text||'';
+  $('#nmSkip').textContent=noteOf(t)?'Annulla':'Salta';
+  $('#nmSave').onclick=()=>{const text=$('#nmText').value.trim(),tags=TAGS.map(x=>x[0]).filter(k=>sel.has(k));
+    if(!text&&!tags.length)delete NOTES[String(t.start)];else NOTES[String(t.start)]={tags,text};
+    API.kvSet('notes',NOTES);closeNote();toast(text||tags.length?'Nota salvata':'Nota rimossa');if(cb)cb();refreshTab()};
+  $('#nmSkip').onclick=closeNote;
+  $('#noteModal').style.display='flex';
+}
+function closeNote(){$('#noteModal').style.display='none';$('#nmText').blur()}
+$('#noteModal').onclick=e=>{if(e.target.id==='noteModal')closeNote()};
+function refreshTab(){if(tab==='arc')renderArc();else if(tab==='tra')renderTratte();else if(tab==='cmp')renderCmp();else if(tab==='rec')showLastRec()}
+// collega il pulsante "Nota" della scheda dettaglio
+function wireDetail(box,t,again){const b=box.querySelector('[data-note]');if(b)b.onclick=()=>openNote(t,'Nota sulla traccia',again)}
 
 /* ================= ponte verso Android (o simulazione nel browser) ================= */
 const IS_ANDROID=typeof window.Android!=='undefined';
@@ -273,6 +317,7 @@ let TRACKS=[];
 let PLACES=API.kvGet('places',[]);
 let ui=API.kvGet('ui',{veh:'scooter',A:null,B:null,vf:'all',rad:'120',sort:'recent',view:[44.06,12.57],zoom:13});
 const saveUi=()=>API.kvSet('ui',ui);
+let NOTES=API.kvGet('notes',{});
 let SEL=new Map();          // tratte scelte per il confronto: chiave -> {id,i0,i1}
 let SEGS=[];                // tratte A→B correnti
 let hlKey=null;
@@ -381,7 +426,7 @@ function poll(){
     $('#recBtn').innerHTML='<span class="rec-dot"></span>■ Ferma e salva';$('#recBtn').className='btn red big';
   }else{
     if(live.wasRec){live.wasRec=false;L_live.clearLayers();reloadTracks();const t=TRACKS[0];
-      if(t&&t.id===st.lastFinished)toast(`Salvata: ${fmtDur((t.end-t.start)/1000)} · ${fmtKm(pathLen(t.points))} km`);
+      if(t&&t.id===st.lastFinished){ui.prompted=t.start;saveUi();openNote(t,'Traccia salvata ✓ — vuoi aggiungere una nota?')}
       if(tab==='arc')renderArc();if(tab==='tra')renderTratte()}
     $('#recBtn').textContent='▶ Avvia registrazione';$('#recBtn').className='btn pri big';
     showLastRec();
@@ -468,7 +513,7 @@ function renderTratte(fit){
     h+='</table><p class="mut" style="margin:6px 0 0">Tempo tipico per fascia oraria · numero di tratte. In verde la strada più rapida.</p></div>';
   }
   h+=`<div class="card"><h3>Tutte le tratte</h3><p class="mut" style="margin:0">Tocca una tratta per vederla colorata per velocità con il grafico ogni 100 m; spunta ☑ quelle da confrontare.</p>`;
-  h+=SEGS.map(s=>`<div class="item${s.key===hlKey?' hl':''}" data-k="${s.key}"><input type="checkbox" class="ck" data-ck="${s.key}" ${SEL.has(s.key)?'checked':''}><span class="dot" style="background:${s.route.col}" title="Strada ${s.route.n}"></span><div class="grow"><b>${dd(s.t0)}</b> · ${hh(s.t0)}→${hh(s.t1)} ${vi(s.track.vehicle)}<br><span class="mut">${fmtKm(s.len)} km · ${s.v} km/h media · strada ${s.route.n}</span></div><b class="dur">${fmtDur(s.dur)}</b></div>`).join('');
+  h+=SEGS.map(s=>`<div class="item${s.key===hlKey?' hl':''}" data-k="${s.key}"><input type="checkbox" class="ck" data-ck="${s.key}" ${SEL.has(s.key)?'checked':''}><span class="dot" style="background:${s.route.col}" title="Strada ${s.route.n}"></span><div class="grow"><b>${dd(s.t0)}</b> · ${hh(s.t0)}→${hh(s.t1)} ${vi(s.track.vehicle)}<br><span class="mut">${fmtKm(s.len)} km · ${s.v} km/h media · strada ${s.route.n}</span>${noteBadge(s.track)}</div><b class="dur">${fmtDur(s.dur)}</b></div>`).join('');
   h+='</div>';
   out.innerHTML=h;
   $$('#traOut [data-ck]').forEach(c=>{c.onclick=e=>e.stopPropagation();c.onchange=()=>{const s=SEGS.find(x=>x.key===c.dataset.ck);if(c.checked){if(SEL.size>=6){c.checked=false;toast('Massimo 6 tratte nel confronto');return}SEL.set(s.key,{id:s.track.id,i0:s.i0,i1:s.i1})}else SEL.delete(s.key);updCmpBtn()}});
@@ -482,7 +527,7 @@ function drawTra(){
   [...SEGS].reverse().forEach(s=>{if(s===hs)return;L.polyline(s.track.points.slice(s.i0,s.i1+1).map(ll),{color:s.route.col,weight:4,opacity:hs?.18:.5}).addTo(L_tra)});
   if(hs)drawSpeedLine(L_tra,hs.track.points,hs.i0,hs.i1,hs.track.vehicle);
   showLegend(hs?hs.track.vehicle:null);
-  const box=$('#traDet');if(box){box.innerHTML=hs?detailCard(hs.track,hs.i0,hs.i1,'Tratta selezionata'):'';const c=box.querySelector('[data-close]');if(c)c.onclick=()=>{hlKey=null;$$('#traOut .item').forEach(x=>x.classList.remove('hl'));drawTra()}}
+  const box=$('#traDet');if(box){box.innerHTML=hs?detailCard(hs.track,hs.i0,hs.i1,'Tratta selezionata'):'';const c=box.querySelector('[data-close]');if(c)c.onclick=()=>{hlKey=null;$$('#traOut .item').forEach(x=>x.classList.remove('hl'));drawTra()};if(hs)wireDetail(box,hs.track)}
 }
 function updCmpBtn(){const b=$('#goCmp');b.textContent=`⚖ Confronta (${SEL.size})`;b.disabled=SEL.size<2}
 
@@ -518,12 +563,14 @@ function renderCmp(){
    <tr><td>Vel. media</td>${col(s=>s.v+' km/h')}</tr>
    <tr><td>Vel. max</td>${col(s=>s.st.vmax+' km/h')}</tr>
    <tr><td>Fermo</td>${col(s=>fmtDur(s.st.stop))}</tr>
+   <tr><td>Note</td>${col(s=>{const n=noteOf(s.track);return n?(n.tags.map(tagIcon).join('')||'')+(n.text?` <span class="mut">${esc(n.text.length>24?n.text.slice(0,24)+'…':n.text)}</span>`:''):'<span class="mut">–</span>'})}</tr>
   </table><p class="mut" style="margin:6px 0 0">“Fermo” = tempo sotto i 3 km/h (semafori, code). Vel. max calcolata su almeno 20 s.</p></div>`;
   h+=`<div class="card"><h3>Andamento: tempo trascorso per km percorso</h3>${chart(segs)}<p class="mut" style="margin:4px 0 0">Più la linea è bassa, più si è in vantaggio. I tratti piatti verso l'alto sono le soste.</p></div>`;
   h+=`<div class="card"><h3>Velocità ogni 100 m</h3>${speedChart(segs)}<p class="mut" style="margin:4px 0 0">Dove una linea scende c'è stato un rallentamento (semaforo, coda, salita).</p></div>`;
-  h+=`<div class="card">${segs.map((s,i)=>`<div class="item"><span class="dot" style="background:${s.col}"></span><div class="grow">${i+1}. ${dd(s.t0)} ${hh(s.t0)} ${vi(s.track.vehicle)}</div><button data-rm="${s.key}">Togli</button></div>`).join('')}<button class="btn sm" id="cmpClr" style="margin-top:8px">Svuota selezione</button></div>`;
+  h+=`<div class="card">${segs.map((s,i)=>`<div class="item"><span class="dot" style="background:${s.col}"></span><div class="grow">${i+1}. ${dd(s.t0)} ${hh(s.t0)} ${vi(s.track.vehicle)}${noteBadge(s.track)}</div><button data-nt="${s.track.id}">✎</button><button data-rm="${s.key}">Togli</button></div>`).join('')}<button class="btn sm" id="cmpClr" style="margin-top:8px">Svuota selezione</button></div>`;
   out.innerHTML=h;
   $$('#cmpOut [data-rm]').forEach(b=>b.onclick=()=>{SEL.delete(b.dataset.rm);renderCmp()});
+  $$('#cmpOut [data-nt]').forEach(b=>b.onclick=()=>{const t=TRACKS.find(x=>String(x.id)===b.dataset.nt);if(t)openNote(t)});
   $('#cmpClr').onclick=()=>{SEL.clear();renderCmp()};
 }
 function speedChart(segs){
@@ -556,22 +603,23 @@ function renderArc(){
   if(!TRACKS.length){el.innerHTML='<p class="mut">Nessuna traccia salvata.</p>';return}
   const tot=TRACKS.reduce((s,t)=>s+pathLen(t.points),0);
   el.innerHTML=`<p class="mut">${TRACKS.length} tracce · ${fmtKm(tot)} km totali. ☑ = aggiungi al confronto.</p>`+TRACKS.map(t=>{const len=pathLen(t.points),dur=(t.end-t.start)/1000,k=`${t.id}:0:${t.points.length-1}`;
-    return `<div class="item"><input type="checkbox" class="ck" data-ck="${k}" data-id="${t.id}" ${SEL.has(k)?'checked':''}><span style="font-size:20px">${vi(t.vehicle)}</span><div class="grow"><b>${dd(t.start)}</b> ${hh(t.start)}${t.demo?' <span class="mut">demo</span>':''}<br><span class="mut">${fmtDur(dur)} · ${fmtKm(len)} km · ${fmtV(len,dur)} km/h</span></div><button data-s="${t.id}">👁</button><button data-d="${t.id}">🗑</button></div>`}).join('');
+    return `<div class="item"><input type="checkbox" class="ck" data-ck="${k}" data-id="${t.id}" ${SEL.has(k)?'checked':''}><span style="font-size:20px">${vi(t.vehicle)}</span><div class="grow"><b>${dd(t.start)}</b> ${hh(t.start)}${t.demo?' <span class="mut">demo</span>':''}<br><span class="mut">${fmtDur(dur)} · ${fmtKm(len)} km · ${fmtV(len,dur)} km/h</span>${noteBadge(t)}</div><button data-s="${t.id}">👁</button><button data-d="${t.id}">🗑</button></div>`}).join('');
   $$('#arcList [data-ck]').forEach(c=>c.onchange=()=>{const t=TRACKS.find(x=>String(x.id)===c.dataset.id);if(c.checked){if(SEL.size>=6){c.checked=false;toast('Massimo 6 nel confronto');return}SEL.set(c.dataset.ck,{id:t.id,i0:0,i1:t.points.length-1})}else SEL.delete(c.dataset.ck);updCmpBtn();toast(`${SEL.size} nel confronto`,1200)});
   $$('#arcList [data-s]').forEach(b=>b.onclick=()=>{const t=TRACKS.find(x=>String(x.id)===b.dataset.s);L_arc.clearLayers();drawSpeedLine(L_arc,t.points,0,t.points.length-1,t.vehicle);showLegend(t.vehicle);
     map.fitBounds(L.latLngBounds(t.points.map(ll)),{padding:[30,30]});
-    const box=$('#arcDet');box.innerHTML=detailCard(t,0,t.points.length-1,'Traccia');box.querySelector('[data-close]').onclick=()=>{box.innerHTML='';L_arc.clearLayers();showLegend(null)};$('#p-arc').scrollTop=0});
+    const box=$('#arcDet');const show=()=>{box.innerHTML=detailCard(t,0,t.points.length-1,'Traccia');box.querySelector('[data-close]').onclick=()=>{box.innerHTML='';L_arc.clearLayers();showLegend(null)};wireDetail(box,t,()=>setTimeout(show,0))};show();$('#p-arc').scrollTop=0});
   $$('#arcList [data-d]').forEach(b=>b.onclick=()=>confirmBtn(b,()=>{API.del(+b.dataset.d);reloadTracks();renderArc()}));
 }
 const stamp=()=>new Date().toISOString().slice(0,10);
-$('#expJ').onclick=()=>{if(!TRACKS.length)return toast('Archivio vuoto');const p=API.save(`tracce-backup-${stamp()}.json`,'application/json',JSON.stringify({app:'TracceAB',v:2,places:PLACES,tracks:TRACKS.map(t=>({vehicle:t.vehicle,start:t.start,end:t.end,demo:t.demo,points:t.points}))}));toast('Salvato in '+p,4000)};
+$('#expJ').onclick=()=>{if(!TRACKS.length)return toast('Archivio vuoto');const p=API.save(`tracce-backup-${stamp()}.json`,'application/json',JSON.stringify({app:'TracceAB',v:2,places:PLACES,notes:NOTES,tracks:TRACKS.map(t=>({vehicle:t.vehicle,start:t.start,end:t.end,demo:t.demo,points:t.points}))}));toast('Salvato in '+p,4000)};
 $('#expG').onclick=()=>{if(!TRACKS.length)return toast('Archivio vuoto');
-  const g=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Tracce A-B" xmlns="http://www.topografix.com/GPX/1/1">\n`+PLACES.map(p=>`<wpt lat="${p.lat}" lon="${p.lon}"><name>${esc(p.name)}</name></wpt>`).join('\n')+'\n'+TRACKS.map(t=>`<trk><name>${vn(t.vehicle)} ${dd(t.start)} ${hh(t.start)}</name><type>${t.vehicle}</type><trkseg>${t.points.map(p=>`<trkpt lat="${p[0]}" lon="${p[1]}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n')+'\n</gpx>';
+  const g=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Tracce A-B" xmlns="http://www.topografix.com/GPX/1/1">\n`+PLACES.map(p=>`<wpt lat="${p.lat}" lon="${p.lon}"><name>${esc(p.name)}</name></wpt>`).join('\n')+'\n'+TRACKS.map(t=>`<trk><name>${vn(t.vehicle)} ${dd(t.start)} ${hh(t.start)}</name>${noteOf(t)?`<desc>${esc([...noteOf(t).tags.map(k=>(TAGS.find(x=>x[0]===k)||[0,0,k])[2]),noteOf(t).text].filter(Boolean).join(' - '))}</desc>`:''}<type>${t.vehicle}</type><trkseg>${t.points.map(p=>`<trkpt lat="${p[0]}" lon="${p[1]}"><time>${new Date(p[2]).toISOString()}</time></trkpt>`).join('')}</trkseg></trk>`).join('\n')+'\n</gpx>';
   toast('Salvato in '+API.save(`tracce-${stamp()}.gpx`,'application/gpx+xml',g),4000)};
 $('#imp').onchange=async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const txt=await f.text();let arr=[],np=0;
     if(/^\s*[\[{]/.test(txt)){const j=JSON.parse(txt);arr=(j.tracks||j).filter(t=>t.points);
+      if(j.notes){Object.keys(j.notes).forEach(k=>{if(!NOTES[k])NOTES[k]=j.notes[k]});API.kvSet('notes',NOTES)}
       (j.places||[]).forEach(p=>{if(!PLACES.some(q=>dP([q.lat,q.lon],[p.lat,p.lon])<20)){PLACES.push({id:'p'+Math.random().toString(36).slice(2,8),name:p.name,lat:p.lat,lon:p.lon});np++}})}
     else{const x=new DOMParser().parseFromString(txt,'application/xml');
       [...x.getElementsByTagName('trk')].forEach(trk=>{
@@ -622,6 +670,8 @@ $('#updBtn').onclick=()=>{toast('Controllo aggiornamenti…');Android.checkUpdat
   $('#rad').value=ui.rad||'120';$('#sort').value=ui.sort||'recent';
   $$('#vehF button').forEach(b=>b.classList.toggle('on',b.dataset.v===(ui.vf||'all')));
   drawPlaces();poll();showVersion();
+  const lt=TRACKS.find(t=>!t.demo);
+  if(lt&&!noteOf(lt)&&ui.prompted!==lt.start&&Date.now()-lt.end<3*3600e3&&!API.state().rec){ui.prompted=lt.start;saveUi();setTimeout(()=>openNote(lt,'Traccia salvata ✓ — vuoi aggiungere una nota?'),700)}
   if(!PLACES.length)setTimeout(()=>toast('Inizia aggiungendo i tuoi luoghi nella scheda 📍 Luoghi',4000),800);
 })();
 </script>

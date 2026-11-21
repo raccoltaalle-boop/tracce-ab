@@ -1,1 +1,1 @@
-Velocità ogni 100 m, tracce colorate per velocità (rosso lento -> verde veloce), dati di registrazione più chiari.
+Note sulle tracce: al salvataggio puoi aggiungere una nota con i tasti rapidi Traffico, Sosta, Pioggia, Lavori in corso.
