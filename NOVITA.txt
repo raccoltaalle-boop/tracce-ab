@@ -1,1 +1,1 @@
-Pausa nella registrazione: tocca Pausa (nell'app o nella notifica) e poi Riprendi. Il tempo in pausa non conta nei tempi e nelle velocità.
+Senso di marcia: P = partenza, A = arrivo e frecce lungo il percorso. In archivio orario di partenza e arrivo.
