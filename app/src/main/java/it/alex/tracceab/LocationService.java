@@ -28,6 +28,8 @@ import java.util.Locale;
 public class LocationService extends Service implements LocationListener {
 
     public static final String ACTION_STOP = "it.alex.tracceab.STOP";
+    public static final String ACTION_PAUSE = "it.alex.tracceab.PAUSE";
+    public static final String ACTION_RESUME = "it.alex.tracceab.RESUME";
     public static final String EXTRA_VEHICLE = "vehicle";
     private static final String CHANNEL = "rec";
     private static final int NOTIF_ID = 1;
@@ -40,6 +42,20 @@ public class LocationService extends Service implements LocationListener {
     public static volatile float lastAcc = -1;
     public static volatile long lastFinished = -1;
     public static volatile double[] lastFix = null;
+    public static volatile boolean paused = false;
+    public static volatile long pauseStart = 0;
+    public static volatile long pausedTotal = 0;
+    private static final java.util.List<long[]> pauses = new java.util.ArrayList<>();
+
+    /** Intervalli di pausa della registrazione in corso, in JSON. */
+    public static synchronized String pausesJson() {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < pauses.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append('[').append(pauses.get(i)[0]).append(',').append(pauses.get(i)[1]).append(']');
+        }
+        return sb.append(']').toString();
+    }
 
     private Location last;
     private double distance = 0;
@@ -63,6 +79,8 @@ public class LocationService extends Service implements LocationListener {
             stopRecording();
             return START_NOT_STICKY;
         }
+        if (ACTION_PAUSE.equals(intent.getAction())) { pause(); return START_NOT_STICKY; }
+        if (ACTION_RESUME.equals(intent.getAction())) { resume(); return START_NOT_STICKY; }
         if (trackId >= 0) return START_NOT_STICKY; // già in registrazione
 
         vehicle = intent.getStringExtra(EXTRA_VEHICLE);
@@ -71,6 +89,10 @@ public class LocationService extends Service implements LocationListener {
         count = 0;
         distance = 0;
         last = null;
+        paused = false;
+        pauseStart = 0;
+        pausedTotal = 0;
+        synchronized (LocationService.class) { pauses.clear(); }
         trackId = Db.get(this).newTrack(vehicle, startTime);
 
         createChannel();
@@ -100,7 +122,7 @@ public class LocationService extends Service implements LocationListener {
     public void onLocationChanged(Location loc) {
         lastAcc = loc.hasAccuracy() ? loc.getAccuracy() : -1;
         lastFix = new double[]{loc.getLatitude(), loc.getLongitude()};
-        if (trackId < 0) return;
+        if (trackId < 0 || paused) return;
         if (loc.hasAccuracy() && loc.getAccuracy() > 40) return;          // fix impreciso
         long t = loc.getTime() > 0 ? loc.getTime() : System.currentTimeMillis();
         if (last != null) {
@@ -117,6 +139,30 @@ public class LocationService extends Service implements LocationListener {
         if (count == 1) updateNotification();
     }
 
+    /** Pausa: smette di ascoltare il GPS e annota l'inizio della pausa. */
+    private void pause() {
+        if (trackId < 0 || paused) return;
+        paused = true;
+        pauseStart = System.currentTimeMillis();
+        if (lm != null) { try { lm.removeUpdates(this); } catch (Exception ignored) { } }
+        updateNotification();
+    }
+
+    /** Ripresa: salva l'intervallo di pausa e riattiva il GPS. */
+    private void resume() {
+        if (trackId < 0 || !paused) return;
+        long now = System.currentTimeMillis();
+        synchronized (LocationService.class) { pauses.add(new long[]{pauseStart, now}); }
+        pausedTotal += now - pauseStart;
+        paused = false;
+        last = null; // il primo punto dopo la pausa non viene confrontato con quello prima
+        Db.get(this).setPauses(trackId, pausesJson());
+        try {
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, this, Looper.getMainLooper());
+        } catch (SecurityException | IllegalArgumentException e) { stopRecording(); return; }
+        updateNotification();
+    }
+
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @SuppressWarnings("deprecation")
@@ -128,6 +174,11 @@ public class LocationService extends Service implements LocationListener {
             try { lm.removeUpdates(this); } catch (Exception ignored) { }
         }
         long id = trackId;
+        if (id >= 0 && paused) {
+            synchronized (LocationService.class) { pauses.add(new long[]{pauseStart, System.currentTimeMillis()}); }
+        }
+        if (id >= 0) Db.get(this).setPauses(id, pausesJson());
+        paused = false;
         trackId = -1;
         if (id >= 0) {
             boolean kept = Db.get(this).finishTrack(id);
@@ -168,9 +219,15 @@ public class LocationService extends Service implements LocationListener {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Action stopAction = new Notification.Action.Builder(
                 Icon.createWithResource(this, R.drawable.ic_stat), "Ferma e salva", piStop).build();
+        Intent pr = new Intent(this, LocationService.class).setAction(paused ? ACTION_RESUME : ACTION_PAUSE);
+        PendingIntent piPr = PendingIntent.getService(this, 2, pr,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification.Action prAction = new Notification.Action.Builder(
+                Icon.createWithResource(this, R.drawable.ic_stat), paused ? "Riprendi" : "Pausa", piPr).build();
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("Registrazione in corso · " + label(vehicle))
+                .setContentTitle((paused ? "In pausa · " : "Registrazione in corso · ") + label(vehicle))
+                .addAction(prAction)
                 .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -181,9 +238,11 @@ public class LocationService extends Service implements LocationListener {
     }
 
     private void updateNotification() {
-        long sec = (System.currentTimeMillis() - startTime) / 1000;
+        long now = System.currentTimeMillis();
+        long sec = (now - startTime - pausedTotal - (paused ? now - pauseStart : 0)) / 1000;
         String txt = String.format(Locale.ITALY, "%d:%02d · %.2f km · %d punti GPS",
                 sec / 60, sec % 60, distance / 1000.0, count);
+        if (paused) txt = "In pausa · " + txt + " · tocca Riprendi per continuare";
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.notify(NOTIF_ID, buildNotification(txt));
     }

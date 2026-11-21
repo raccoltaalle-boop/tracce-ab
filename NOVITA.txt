@@ -1,1 +1,1 @@
-Note sulle tracce: al salvataggio puoi aggiungere una nota con i tasti rapidi Traffico, Sosta, Pioggia, Lavori in corso.
+Pausa nella registrazione: tocca Pausa (nell'app o nella notifica) e poi Riprendi. Il tempo in pausa non conta nei tempi e nelle velocità.

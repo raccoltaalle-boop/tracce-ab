@@ -37,6 +37,11 @@ public class Bridge {
             o.put("count", LocationService.count);
             o.put("acc", LocationService.lastAcc);
             o.put("lastFinished", LocationService.lastFinished);
+            o.put("paused", LocationService.paused);
+            o.put("pauseStart", LocationService.pauseStart);
+            o.put("pausedTotal", LocationService.pausedTotal);
+            o.put("pauses", new org.json.JSONArray(LocationService.pausesJson()));
+            o.put("canPause", true);
             return o.toString();
         } catch (Exception e) {
             return "{\"rec\":false,\"track\":-1}";
@@ -65,6 +70,17 @@ public class Bridge {
         if (LocationService.trackId < 0) return;
         Intent i = new Intent(act, LocationService.class).setAction(LocationService.ACTION_STOP);
         try { act.startService(i); } catch (Exception ignored) { }
+    }
+
+    @JavascriptInterface
+    public void pauseRec() { sendAction(LocationService.ACTION_PAUSE); }
+
+    @JavascriptInterface
+    public void resumeRec() { sendAction(LocationService.ACTION_RESUME); }
+
+    private void sendAction(String action) {
+        if (LocationService.trackId < 0) return;
+        try { act.startService(new Intent(act, LocationService.class).setAction(action)); } catch (Exception ignored) { }
     }
 
     @JavascriptInterface

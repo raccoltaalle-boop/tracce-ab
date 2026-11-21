@@ -20,19 +20,26 @@ public class Db extends SQLiteOpenHelper {
     }
 
     private Db(Context c) {
-        super(c, "tracce.db", null, 1);
+        super(c, "tracce.db", null, 2);
     }
 
     @Override
     public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE tracks(id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle TEXT, start INTEGER, end INTEGER, live INTEGER DEFAULT 0, demo INTEGER DEFAULT 0)");
+        db.execSQL("CREATE TABLE tracks(id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle TEXT, start INTEGER, end INTEGER, live INTEGER DEFAULT 0, demo INTEGER DEFAULT 0, pauses TEXT)");
         db.execSQL("CREATE TABLE points(track INTEGER, lat REAL, lon REAL, t INTEGER, acc REAL)");
         db.execSQL("CREATE INDEX ix_points ON points(track, t)");
         db.execSQL("CREATE TABLE kv(k TEXT PRIMARY KEY, v TEXT)");
     }
 
     @Override
-    public void onUpgrade(SQLiteDatabase db, int oldV, int newV) { }
+    public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
+        if (oldV < 2) db.execSQL("ALTER TABLE tracks ADD COLUMN pauses TEXT");
+    }
+
+    /** Salva gli intervalli di pausa della traccia: JSON [[inizio,fine],...] */
+    public synchronized void setPauses(long track, String json) {
+        getWritableDatabase().execSQL("UPDATE tracks SET pauses=? WHERE id=?", new Object[]{json, track});
+    }
 
     public synchronized long newTrack(String vehicle, long start) {
         ContentValues v = new ContentValues();
@@ -103,7 +110,7 @@ public class Db extends SQLiteOpenHelper {
         SQLiteDatabase db = getReadableDatabase();
         StringBuilder sb = new StringBuilder(1 << 16);
         sb.append('[');
-        Cursor t = db.rawQuery("SELECT id, vehicle, start, end, demo FROM tracks WHERE live=0 ORDER BY start DESC", null);
+        Cursor t = db.rawQuery("SELECT id, vehicle, start, end, demo, pauses FROM tracks WHERE live=0 ORDER BY start DESC", null);
         boolean firstT = true;
         try {
             while (t.moveToNext()) {
@@ -115,6 +122,7 @@ public class Db extends SQLiteOpenHelper {
                   .append(",\"start\":").append(t.getLong(2))
                   .append(",\"end\":").append(t.getLong(3))
                   .append(",\"demo\":").append(t.getInt(4))
+                  .append(",\"pauses\":").append(t.isNull(5) ? "[]" : t.getString(5))
                   .append(",\"live\":0,\"points\":[");
                 Cursor p = db.rawQuery("SELECT lat, lon, t, acc FROM points WHERE track=? ORDER BY t", new String[]{String.valueOf(id)});
                 try {
@@ -166,6 +174,7 @@ public class Db extends SQLiteOpenHelper {
                 v.put("end", o.getLong("end"));
                 v.put("live", 0);
                 v.put("demo", o.optInt("demo", 0));
+                if (o.has("pauses")) v.put("pauses", o.getJSONArray("pauses").toString());
                 long id = db.insert("tracks", null, v);
                 for (int k = 0; k < pts.length(); k++) {
                     JSONArray q = pts.getJSONArray(k);
