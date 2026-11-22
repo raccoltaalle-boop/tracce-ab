@@ -1,1 +1,1 @@
-Navigatore TomTom: scegli la destinazione alla partenza e scopri quanto hai guadagnato o perso rispetto al tempo previsto con il traffico. Inserisci la chiave in Archivio.
+Corretta la previsione del navigatore: ora parte anche quando il GPS impiega qualche secondo ad avviarsi.

@@ -533,8 +533,7 @@ $('#recBtn').onclick=()=>{
     const r=API.start(ui.veh);
     if(r==='noperm'){toast('Concedi il permesso di posizione (“Mentre usi l\'app” e posizione precisa), poi premi di nuovo Avvia',6000);return}
     if(r!=='ok'){toast('Impossibile avviare: '+r,5000);return}
-    const s2=API.state();
-    if(dest){pendingDest={start:s2.start,dest,veh:ui.veh};API.kvSet('pending',{start:s2.start,dest,veh:ui.veh})}else{pendingDest=null;API.kvSet('pending',null)}
+    if(dest){pendingDest={start:null,created:Date.now(),dest,veh:ui.veh};API.kvSet('pending',pendingDest)}else{pendingDest=null;API.kvSet('pending',null)}
     toast(`Registrazione ${vn(ui.veh)} avviata`);setTimeout(poll,800);
   };
   if(PLACES.length&&API.kvGet('ttkey',''))askDest(go);else go(null);
@@ -563,6 +562,7 @@ function poll(){
       if(!meMarker)meMarker=L.circleMarker(lp,{radius:7,color:'#fff',weight:2,fillColor:'#4fa3ff',fillOpacity:1}).addTo(map);else meMarker.setLatLng(lp);
       if(tab==='rec'&&!map.getBounds().pad(-.25).contains(lp))map.panTo(lp)}
     prepTrack({points:live.pts,pauses:st.pauses||[]});
+    if(pendingDest&&pendingDest.start==null&&st.start&&st.start>=pendingDest.created-15000){pendingDest.start=st.start;API.kvSet('pending',{start:st.start,created:pendingDest.created,dest:pendingDest.dest,veh:pendingDest.veh})}
     if(pendingDest&&pendingDest.start===st.start&&!PRED[String(st.start)]&&!(pendingDest.tries>=3))requestPred(st);
     showPredLive(st);
     const pts=live.pts,len=pathLen(pts),now=Date.now(),pzNow=st.paused?now-st.pauseStart:0;
