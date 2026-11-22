@@ -1,0 +1,13 @@
+{
+ "web": 9,
+ "minApk": 3,
+ "apk": 4,
+ "apkSha256": "4ea7764ac2dbf499b1ca87a8288cd97cdd4e97e02c36c67b843a6871d5da65e6",
+ "files": {
+  "index.html": "b56037b78fe7cdae4d1b6011294ff4737bd1e889c6c278a0cc20ec6262afb46f",
+  "leaflet.css": "a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6",
+  "leaflet.js": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a"
+ },
+ "notes": "Corretta la previsione del navigatore: ora parte anche quando il GPS impiega qualche secondo ad avviarsi.",
+ "commit": "65aae44"
+}
