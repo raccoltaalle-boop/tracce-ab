@@ -116,6 +116,24 @@ public class Bridge {
     @JavascriptInterface
     public void checkUpdate() { act.updater.check(true); }
 
+    /** GET verso il servizio di navigazione (solo api.tomtom.com). Restituisce il testo o "ERR: ..." */
+    @JavascriptInterface
+    public String httpGet(String url) {
+        if (url == null || !url.startsWith("https://api.tomtom.com/")) return "ERR: indirizzo non consentito";
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(20000);
+            c.setRequestProperty("User-Agent", "TracceAB/" + BuildConfig.VERSION_CODE);
+            int code = c.getResponseCode();
+            java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            String body = in == null ? "" : new String(Updater.readAll(in), StandardCharsets.UTF_8);
+            return code >= 400 ? "ERR: HTTP " + code + " " + body : body;
+        } catch (Exception e) {
+            return "ERR: " + e.getMessage();
+        }
+    }
+
     @JavascriptInterface
     public String allTracks() { return Db.get(act).allTracksJson(); }
 

@@ -66,6 +66,10 @@ svg text{fill:var(--mut);font-size:10px}
 .mk{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:2px solid #fff;color:#fff;font:800 12px system-ui,sans-serif;box-shadow:0 2px 6px #000a}
 .mk.p{background:#1a9e48}.mk.a{background:#e0242b}
 .arr{width:16px;height:16px;display:block}
+.dests{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;max-height:45vh;overflow:auto}
+.dests button{border:2px solid var(--line);background:var(--bg);color:var(--tx);border-radius:12px;padding:12px 6px;font-size:14px;font-weight:600}
+.pred{border-left:4px solid #4fa3ff}
+.gain{color:var(--ok);font-weight:700}.loss{color:var(--bad);font-weight:700}
 .modal{position:fixed;inset:0;background:#000b;z-index:3000;display:flex;align-items:flex-end}
 .modal .box{background:var(--panel);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px #000a}
 .modal h3{margin:0 0 4px;font-size:16px}
@@ -104,6 +108,7 @@ svg text{fill:var(--mut);font-size:10px}
       </div>
       <button class="btn big" id="pauseBtn" style="display:none;margin-bottom:8px">⏸ Pausa</button>
       <button class="btn pri big" id="recBtn">▶ Avvia registrazione</button>
+      <div id="predLive"></div>
       <div class="rechead"><span id="sHead">Nessuna registrazione</span><span id="sGps"></span></div>
       <div class="stats" style="margin-top:4px">
         <div class="stat"><b id="sT">–</b><span>durata</span></div>
@@ -156,11 +161,21 @@ svg text{fill:var(--mut);font-size:10px}
       </div>
       <div id="arcDet"></div>
       <div id="arcList"></div>
+      <div class="card" style="margin-top:14px"><h3>🧭 Navigatore TomTom</h3>
+        <p class="mut" style="margin:0 0 8px">Serve per la previsione dei tempi con il traffico. Chiave gratuita su <b>developer.tomtom.com</b> (registrati → Dashboard → copia la API key).</p>
+        <div class="row"><input type="text" id="ttKey" placeholder="Incolla qui la chiave TomTom" style="flex:1;min-width:0" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn sm pri" id="ttSave">Salva</button></div>
+        <div class="row" style="margin-top:8px;justify-content:space-between"><span class="mut" id="ttState"></span><button class="btn sm" id="ttTest">Prova</button></div>
+      </div>
       <div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><span class="mut" id="verInfo">Tracce A→B</span><button class="btn sm" id="updBtn">🔄 Aggiornamenti</button></div></div>
     </div>
   </div>
 </div>
 <div id="toast"></div>
+<div class="modal" id="destModal" style="display:none"><div class="box">
+  <h3>🧭 Dove vai?</h3><div class="mut">Il navigatore TomTom calcola adesso il tempo previsto con il traffico; all'arrivo vedi quanto hai guadagnato o perso.</div>
+  <div class="dests" id="destList"></div>
+  <div class="row" style="margin-top:12px"><button class="btn" id="destNo" style="flex:1">Solo registra</button><button class="btn" id="destCancel">Annulla</button></div>
+</div></div>
 <div class="modal" id="noteModal" style="display:none"><div class="box">
   <h3 id="nmTitle">Nota</h3><div class="mut" id="nmSub"></div>
   <div class="tagchips" id="nmTags"></div>
@@ -274,7 +289,7 @@ function detailCard(track,i0,i1,title){
   const slow=sp.filter(s=>speedClass(s.v,track.vehicle)===0).length;
   return `<div class="card det"><h3><span>${title}</span><button data-close="1">✕</button></h3>
    <div class="mut">${vi(track.vehicle)} ${vn(track.vehicle)} · ${dd(p[i0][2])} ${hh(p[i0][2])}→${hh(p[i1][2])}</div>
-   ${noteBlock(track)}<button class="btn sm" data-note="1" style="margin-top:8px">✎ ${noteOf(track)?'Modifica nota':'Aggiungi nota'}</button>
+   ${predBlock(track)}${noteBlock(track)}<button class="btn sm" data-note="1" style="margin-top:8px">✎ ${noteOf(track)?'Modifica nota':'Aggiungi nota'}</button>
    <div class="stats"><div class="stat"><b>${fmtDur(dur)}</b><span>durata</span></div><div class="stat"><b>${fmtKm(len)}</b><span>km</span></div><div class="stat"><b>${fmtV(len,dur)}</b><span>media km/h</span></div><div class="stat"><b>${st.vmax}</b><span>max km/h</span></div></div>${pz>=30?`<div class="mut" style="margin-top:6px">⏸ in pausa ${fmtDur(pz)} (escluse da tempi e velocità)</div>`:''}
    <h3 style="margin-top:10px">Velocità ogni 100 m</h3>${speedBars(sp,track.vehicle)}
    <p class="mut" style="margin:4px 0 0">${sp.length} tratti da 100 m · ${slow} molto lenti (rosso) · fermo ${fmtDur(st.stop)}. Tocca la linea sulla mappa per la velocità di ogni tratto.</p></div>`;
@@ -293,6 +308,7 @@ function openNote(t,title,cb){
   const n=noteOf(t)||{tags:[],text:''},sel=new Set(n.tags);
   $('#nmTitle').textContent=title||'Nota sulla traccia';
   $('#nmSub').textContent=`${vi(t.vehicle)} ${dd(t.start)} ${hh(t.start)} · ${fmtDur(t.effDur)} · ${fmtKm(pathLen(t.points))} km`;
+  const pr=predResult(t);$('#nmSub').innerHTML=esc($('#nmSub').textContent)+(pr&&pr.reached?`<br>🧭 ${esc(pr.p.destName)}: ${fmtDiff(pr.diff)} rispetto al navigatore`:'');
   $('#nmTags').innerHTML=TAGS.map(([k,i,l])=>`<button data-tag="${k}" class="${sel.has(k)?'on':''}">${i} ${l}</button>`).join('');
   $$('#nmTags button').forEach(b=>b.onclick=()=>{const k=b.dataset.tag;sel.has(k)?sel.delete(k):sel.add(k);b.classList.toggle('on')});
   $('#nmText').value=n.text||'';
@@ -308,6 +324,84 @@ $('#noteModal').onclick=e=>{if(e.target.id==='noteModal')closeNote()};
 function refreshTab(){if(tab==='arc')renderArc();else if(tab==='tra')renderTratte();else if(tab==='cmp')renderCmp();else if(tab==='rec')showLastRec()}
 // collega il pulsante "Nota" della scheda dettaglio
 function wireDetail(box,t,again){const b=box.querySelector('[data-note]');if(b)b.onclick=()=>openNote(t,'Nota sulla traccia',again)}
+
+/* ================= previsione TomTom (tempo con traffico verso la destinazione) ================= */
+const TT_MODE={auto:'car',scooter:'motorcycle',bici:'bicycle'};
+async function httpJson(url){
+  try{const r=await fetch(url,{cache:'no-store'});const t=await r.text();if(!r.ok)throw new Error('HTTP '+r.status+' '+t.slice(0,140));return JSON.parse(t)}
+  catch(e){ // se il browser blocca la richiesta, la faccio fare all'app
+    if(IS_ANDROID&&window.Android&&Android.httpGet){const t=Android.httpGet(url);if(t&&!t.startsWith('ERR'))return JSON.parse(t);throw new Error(t||String(e))}
+    throw e}
+}
+async function ttRoute(o,d,veh){
+  const key=(API.kvGet('ttkey','')||'').trim();if(!key)throw new Error('manca la chiave TomTom (Archivio → Navigatore)');
+  const base=`https://api.tomtom.com/routing/1/calculateRoute/${o[0].toFixed(6)},${o[1].toFixed(6)}:${d[0].toFixed(6)},${d[1].toFixed(6)}/json`;
+  const q=m=>`${base}?key=${encodeURIComponent(key)}&traffic=true&travelMode=${m}&routeType=fastest&departAt=now&computeTravelTimeFor=all`;
+  let j,mode=TT_MODE[veh]||'car';
+  try{j=await httpJson(q(mode))}catch(e){if(mode==='motorcycle'){mode='car';j=await httpJson(q(mode))}else throw e}
+  const r=j.routes&&j.routes[0];if(!r)throw new Error('nessun percorso trovato');
+  const pts=r.legs.flatMap(l=>(l.points||[]).map(p=>[+p.latitude.toFixed(5),+p.longitude.toFixed(5)]));
+  const st=Math.max(1,Math.ceil(pts.length/300)),route=pts.filter((p,i)=>i%st===0||i===pts.length-1);
+  const s=r.summary;
+  return{eta:s.travelTimeInSeconds,noTraffic:s.noTrafficTravelTimeInSeconds??null,delay:s.trafficDelayInSeconds||0,len:s.lengthInMeters,route,mode};
+}
+const predOf=t=>t&&PRED[String(t.start)]||null;
+let L_predG=null;const predLayer=()=>L_predG||(L_predG=L.layerGroup().addTo(map));
+function drawPred(layer,p){if(!p||!p.route||p.route.length<2)return;
+  L.polyline(p.route,{color:'#000',weight:7,opacity:.25,interactive:false}).addTo(layer);
+  L.polyline(p.route,{color:'#4fa3ff',weight:4,dashArray:'8 8',opacity:.95}).bindTooltip(`Percorso del navigatore · ${fmtKm(p.len)} km · previsti ${fmtDur(p.eta)}`,{sticky:true}).addTo(layer)}
+// quanto la strada fatta coincide con quella del navigatore (0..1)
+function sameRoad(pts,route){if(!route||route.length<2||pts.length<2)return null;let ok=0,n=0;
+  for(let i=0;i<route.length;i+=Math.max(1,Math.floor(route.length/60))){n++;let m=1e9;for(let k=0;k<pts.length;k++){const d=dP(route[i],pts[k]);if(d<m)m=d;if(m<50)break}if(m<70)ok++}
+  return n?ok/n:null}
+// risultato: tempo reale fino all'arrivo nella destinazione, confrontato con la previsione
+function predResult(t){const p=predOf(t);if(!p)return null;
+  const pl=PLACES.find(x=>x.id===p.dest),D=pl?[pl.lat,pl.lon]:p.destPt;if(!D)return{p,reached:false};
+  const pts=t.points,r=Math.max(+ui.rad,80);let j=-1;for(let i=1;i<pts.length;i++)if(dP(pts[i],D)<=r){j=i;break}
+  if(j<1)return{p,reached:false};
+  const act=(et(pts[j])-et(pts[0]))/1000;
+  return{p,reached:true,act,diff:act-p.eta,same:sameRoad(pts.slice(0,j+1),p.route),j};
+}
+const fmtDiff=d=>d<=0?`<span class="gain">${fmtDur(-d)} guadagnati</span>`:`<span class="loss">${fmtDur(d)} persi</span>`;
+const diffBadge=res=>res&&res.reached?(res.diff<=0?`<span class="gain">🧭 −${fmtDur(-res.diff)}</span>`:`<span class="loss">🧭 +${fmtDur(res.diff)}</span>`):'';
+function predBlock(t){const res=predResult(t);if(!res)return'';const p=res.p;
+  const tr=p.delay>=30?` (di cui ${fmtDur(p.delay)} di traffico)`:'';
+  if(!res.reached)return `<div class="card pred" style="margin:8px 0 0;padding:8px 10px"><b>🧭 Verso ${esc(p.destName)}</b><br><span class="mut">Il navigatore prevedeva ${fmtDur(p.eta)}${tr}, ma la traccia non arriva a destinazione.</span></div>`;
+  const road=res.same==null?'':res.same>=.8?'stessa strada del navigatore':res.same<.5?'strada diversa dal navigatore':'strada in parte diversa dal navigatore';
+  return `<div class="card pred" style="margin:8px 0 0;padding:8px 10px"><b>🧭 Verso ${esc(p.destName)}: ${fmtDiff(res.diff)}</b><br><span class="mut">Tu ${fmtDur(res.act)} · navigatore ${fmtDur(p.eta)}${tr} · ${road}. Linea tratteggiata blu = percorso del navigatore.</span></div>`;
+}
+function askDest(go){
+  $('#destList').innerHTML=PLACES.map(p=>`<button data-d="${p.id}">📍 ${esc(p.name)}</button>`).join('');
+  $$('#destList button').forEach(b=>b.onclick=()=>{$('#destModal').style.display='none';go(b.dataset.d)});
+  $('#destNo').onclick=()=>{$('#destModal').style.display='none';go(null)};
+  $('#destCancel').onclick=()=>{$('#destModal').style.display='none'};
+  $('#destModal').style.display='flex';
+}
+async function requestPred(st){
+  if(!pendingDest||pendingDest.busy)return;
+  const pl=PLACES.find(x=>x.id===pendingDest.dest);if(!pl){pendingDest=null;API.kvSet('pending',null);return}
+  let o=live.pts.length?ll(live.pts[0]):null;
+  if(!o&&Date.now()-st.start>20000)await new Promise(r=>API.here(p=>{o=p;r()}));
+  if(!o)return;
+  pendingDest.busy=true;showPredLive(st,'Calcolo la previsione…');
+  try{const r=await ttRoute(o,[pl.lat,pl.lon],st.vehicle);
+    PRED[String(st.start)]=Object.assign({dest:pl.id,destName:pl.name,destPt:[pl.lat,pl.lon],origin:o,t:Date.now(),veh:st.vehicle},r);
+    API.kvSet('pred',PRED);pendingDest=null;API.kvSet('pending',null);
+    toast(`🧭 Previsione verso ${pl.name}: ${fmtDur(r.eta)}${r.delay>=30?' (traffico +'+fmtDur(r.delay)+')':''}`,4500);
+  }catch(e){pendingDest.busy=false;pendingDest.err=String(e.message||e);pendingDest.tries=(pendingDest.tries||0)+1;if(pendingDest.tries>=3){toast('Previsione non disponibile: '+pendingDest.err,6000)}}
+  poll();
+}
+function showPredLive(st,msg){
+  const box=$('#predLive');if(!st||!st.rec){box.innerHTML='';predLayer().clearLayers();return}
+  const p=PRED[String(st.start)];
+  if(!p){if(pendingDest&&pendingDest.start===st.start){const pl=PLACES.find(x=>x.id===pendingDest.dest);
+      box.innerHTML=`<div class="card pred" style="margin:0 0 6px"><b>🧭 Verso ${esc(pl?pl.name:'?')}</b><br><span class="mut">${msg||(pendingDest.tries>=3?'Previsione non riuscita: '+esc(pendingDest.err):'Attendo il primo segnale GPS per calcolare la previsione…')}</span>${pendingDest.tries>=3?' <button class="btn sm" id="predRetry">Riprova</button>':''}</div>`;
+      const rb=$('#predRetry');if(rb)rb.onclick=()=>{pendingDest.tries=0;pendingDest.busy=false;requestPred(st)}}
+    else box.innerHTML='';return}
+  const now=Date.now(),moving=(now-st.start-(st.pausedTotal||0)-(st.paused?now-st.pauseStart:0))/1000,arr=new Date(now+Math.max(0,p.eta-moving)*1000);
+  box.innerHTML=`<div class="card pred" style="margin:0 0 6px"><b>🧭 Verso ${esc(p.destName)} · previsti ${fmtDur(p.eta)}</b><br><span class="mut">${p.delay>=30?'di cui '+fmtDur(p.delay)+' di traffico · ':''}${fmtKm(p.len)} km · arrivo previsto ${hh(arr)}</span></div>`;
+  if(tab==='rec'&&!predLayer().getLayers().length)drawPred(predLayer(),p);
+}
 
 /* ================= ponte verso Android (o simulazione nel browser) ================= */
 const IS_ANDROID=typeof window.Android!=='undefined';
@@ -362,6 +456,8 @@ let PLACES=API.kvGet('places',[]);
 let ui=API.kvGet('ui',{veh:'scooter',A:null,B:null,vf:'all',rad:'120',sort:'recent',view:[44.06,12.57],zoom:13});
 const saveUi=()=>API.kvSet('ui',ui);
 let NOTES=API.kvGet('notes',{});
+let PRED=API.kvGet('pred',{});              // previsioni del navigatore, chiave = orario di partenza della traccia
+let pendingDest=API.kvGet('pending',null);  // destinazione scelta per la registrazione in corso
 let SEL=new Map();          // tratte scelte per il confronto: chiave -> {id,i0,i1}
 let SEGS=[];                // tratte A→B correnti
 let hlKey=null;
@@ -433,10 +529,15 @@ $$('#recVeh button').forEach(b=>b.onclick=()=>{if(live.wasRec){toast('Ferma prim
 $('#recBtn').onclick=()=>{
   const st=API.state();
   if(st.rec){API.stop();setTimeout(poll,600);return}
-  const r=API.start(ui.veh);
-  if(r==='noperm'){toast('Concedi il permesso di posizione (“Mentre usi l\'app” e posizione precisa), poi premi di nuovo Avvia',6000);return}
-  if(r!=='ok'){toast('Impossibile avviare: '+r,5000);return}
-  toast(`Registrazione ${vn(ui.veh)} avviata`);setTimeout(poll,800);
+  const go=dest=>{
+    const r=API.start(ui.veh);
+    if(r==='noperm'){toast('Concedi il permesso di posizione (“Mentre usi l\'app” e posizione precisa), poi premi di nuovo Avvia',6000);return}
+    if(r!=='ok'){toast('Impossibile avviare: '+r,5000);return}
+    const s2=API.state();
+    if(dest){pendingDest={start:s2.start,dest,veh:ui.veh};API.kvSet('pending',{start:s2.start,dest,veh:ui.veh})}else{pendingDest=null;API.kvSet('pending',null)}
+    toast(`Registrazione ${vn(ui.veh)} avviata`);setTimeout(poll,800);
+  };
+  if(PLACES.length&&API.kvGet('ttkey',''))askDest(go);else go(null);
 };
 $('#battBtn').onclick=()=>API.battery();
 $('#pauseBtn').onclick=()=>{const st=API.state();if(!st.rec)return;if(st.paused){API.resume();toast('Registrazione ripresa')}else{API.pause();toast('In pausa: tempi e velocità non contano il tempo di pausa',3500)}setTimeout(poll,500)};
@@ -448,6 +549,7 @@ function showLastRec(){
   $('#sHead').textContent=`Ultima traccia: ${vi(t.vehicle)} ${dd(t.start)} ${hh(t.start)}`;$('#sGps').textContent='';
   $('#sT').textContent=fmtDur(dur);$('#sD').textContent=fmtKm(len);$('#sM').textContent=fmtV(len,dur);
   $('#sVl').textContent='max su 100 m';$('#sV').textContent=sp.length?Math.round(Math.max(...sp.map(s=>s.v))):'–';
+  $('#predLive').innerHTML=predBlock(t);
 }
 function poll(){
   let st;try{st=API.state()}catch(e){return}
@@ -461,6 +563,8 @@ function poll(){
       if(!meMarker)meMarker=L.circleMarker(lp,{radius:7,color:'#fff',weight:2,fillColor:'#4fa3ff',fillOpacity:1}).addTo(map);else meMarker.setLatLng(lp);
       if(tab==='rec'&&!map.getBounds().pad(-.25).contains(lp))map.panTo(lp)}
     prepTrack({points:live.pts,pauses:st.pauses||[]});
+    if(pendingDest&&pendingDest.start===st.start&&!PRED[String(st.start)]&&!(pendingDest.tries>=3))requestPred(st);
+    showPredLive(st);
     const pts=live.pts,len=pathLen(pts),now=Date.now(),pzNow=st.paused?now-st.pauseStart:0;
     $('#sHead').innerHTML=st.paused?`<span style="color:var(--acc);font-weight:700">⏸ In pausa da ${fmtDur(pzNow/1000)}</span> · ${vi(st.vehicle)}`:`<span style="color:var(--bad);font-weight:700">● In registrazione</span> · ${vi(st.vehicle)} dalle ${hh(st.start)}`;
     $('#sGps').textContent=st.paused?'GPS in pausa':st.acc>=0?`segnale GPS ±${Math.round(st.acc)} m`:'attendo il GPS…';
@@ -472,8 +576,9 @@ function poll(){
     $('#sV').textContent=sp.length?Math.round(sp[sp.length-1].v):'–';
     $('#recBtn').innerHTML='<span class="rec-dot"></span>■ Ferma e salva';$('#recBtn').className='btn red big';
   }else{
-    if(live.wasRec){live.wasRec=false;L_live.clearLayers();reloadTracks();const t=TRACKS[0];
+    if(live.wasRec){live.wasRec=false;L_live.clearLayers();showPredLive(null);reloadTracks();const t=TRACKS[0];
       if(t&&t.id===st.lastFinished){ui.prompted=t.start;saveUi();openNote(t,'Traccia salvata ✓ — vuoi aggiungere una nota?')}
+      const pr=t&&predResult(t);if(pr&&pr.reached)setTimeout(()=>toast(`🧭 ${pr.p.destName}: ${pr.diff<=0?fmtDur(-pr.diff)+' guadagnati':fmtDur(pr.diff)+' persi'} rispetto al navigatore`,6000),400);
       if(tab==='arc')renderArc();if(tab==='tra')renderTratte()}
     $('#recBtn').textContent='▶ Avvia registrazione';$('#recBtn').className='btn pri big';$('#pauseBtn').style.display='none';
     showLastRec();
@@ -548,7 +653,11 @@ function renderTratte(fit){
   const byV={};segs.forEach(s=>(byV[s.track.vehicle]=byV[s.track.vehicle]||[]).push(s));
   let h=`<div id="traDet"></div><div class="card good"><h3>${segs.length} tratte ${esc(PLACES.find(p=>p.id===ui.A).name)} → ${esc(PLACES.find(p=>p.id===ui.B).name)}</h3><table><tr><th>Mezzo</th><th>n</th><th>migliore</th><th>tipico</th><th>vel. media</th></tr>`;
   Object.keys(byV).forEach(v=>{const a=byV[v],ds=a.map(s=>s.dur);h+=`<tr><td>${vi(v)} ${vn(v)}</td><td>${a.length}</td><td class="best">${fmtDur(Math.min(...ds))}</td><td>${fmtDur(median(ds))}</td><td>${fmtV(a.reduce((x,s)=>x+s.len,0),a.reduce((x,s)=>x+s.dur,0))} km/h</td></tr>`});
-  h+='</table></div>';
+  h+='</table>';
+  const navs=segs.map(s=>predResult(s.track)).filter(r=>r&&r.reached&&r.p.dest===ui.B);
+  if(navs.length){const tot=navs.reduce((x,r)=>x+r.diff,0),win=navs.filter(r=>r.diff<=0).length;
+    h+=`<p style="margin:8px 0 0">🧭 Rispetto al navigatore, ${navs.length===1?'in 1 viaggio':'in '+navs.length+' viaggi'}: ${fmtDiff(tot)}${navs.length>1?' in totale':''} · battuto ${win} ${win===1?'volta':'volte'} su ${navs.length}</p>`}
+  h+='</div>';
   // strade alternative e fasce orarie
   if(routes.length>1){
     const rows=BANDS.map((b,bi)=>({bi,c:routes.map(R=>{const d=R.segs.filter(s=>bandOf(s.t0)===bi).map(s=>s.dur);return d.length?{m:median(d),n:d.length}:null})})).filter(x=>x.c.some(Boolean));
@@ -560,7 +669,7 @@ function renderTratte(fit){
     h+='</table><p class="mut" style="margin:6px 0 0">Tempo tipico per fascia oraria · numero di tratte. In verde la strada più rapida.</p></div>';
   }
   h+=`<div class="card"><h3>Tutte le tratte</h3><p class="mut" style="margin:0">Tocca una tratta per vederla colorata per velocità con il grafico ogni 100 m; spunta ☑ quelle da confrontare.</p>`;
-  h+=SEGS.map(s=>`<div class="item${s.key===hlKey?' hl':''}" data-k="${s.key}"><input type="checkbox" class="ck" data-ck="${s.key}" ${SEL.has(s.key)?'checked':''}><span class="dot" style="background:${s.route.col}" title="Strada ${s.route.n}"></span><div class="grow"><b>${dd(s.t0)}</b> · ${hh(s.t0)}→${hh(s.t1)} ${vi(s.track.vehicle)}<br><span class="mut">${fmtKm(s.len)} km · ${s.v} km/h media · strada ${s.route.n}</span>${noteBadge(s.track)}</div><b class="dur">${fmtDur(s.dur)}</b></div>`).join('');
+  h+=SEGS.map(s=>`<div class="item${s.key===hlKey?' hl':''}" data-k="${s.key}"><input type="checkbox" class="ck" data-ck="${s.key}" ${SEL.has(s.key)?'checked':''}><span class="dot" style="background:${s.route.col}" title="Strada ${s.route.n}"></span><div class="grow"><b>${dd(s.t0)}</b> · ${hh(s.t0)}→${hh(s.t1)} ${vi(s.track.vehicle)}<br><span class="mut">${fmtKm(s.len)} km · ${s.v} km/h media · strada ${s.route.n}</span> ${(()=>{const pr=predResult(s.track);return pr&&pr.p.dest===ui.B?diffBadge(pr):''})()}${noteBadge(s.track)}</div><b class="dur">${fmtDur(s.dur)}</b></div>`).join('');
   h+='</div>';
   out.innerHTML=h;
   $$('#traOut [data-ck]').forEach(c=>{c.onclick=e=>e.stopPropagation();c.onchange=()=>{const s=SEGS.find(x=>x.key===c.dataset.ck);if(c.checked){if(SEL.size>=6){c.checked=false;toast('Massimo 6 tratte nel confronto');return}SEL.set(s.key,{id:s.track.id,i0:s.i0,i1:s.i1})}else SEL.delete(s.key);updCmpBtn()}});
@@ -572,7 +681,7 @@ function drawTra(){
   L_tra.clearLayers();
   const hs=SEGS.find(s=>s.key===hlKey);
   [...SEGS].reverse().forEach(s=>{if(s===hs)return;L.polyline(s.track.points.slice(s.i0,s.i1+1).map(ll),{color:s.route.col,weight:4,opacity:hs?.18:.5}).addTo(L_tra)});
-  if(hs)drawSpeedLine(L_tra,hs.track.points,hs.i0,hs.i1,hs.track.vehicle);
+  if(hs){const pp=predOf(hs.track);if(pp&&pp.dest===ui.B)drawPred(L_tra,pp);drawSpeedLine(L_tra,hs.track.points,hs.i0,hs.i1,hs.track.vehicle)}
   showLegend(hs?hs.track.vehicle:null);
   const box=$('#traDet');if(box){box.innerHTML=hs?detailCard(hs.track,hs.i0,hs.i1,'Tratta selezionata'):'';const c=box.querySelector('[data-close]');if(c)c.onclick=()=>{hlKey=null;$$('#traOut .item').forEach(x=>x.classList.remove('hl'));drawTra()};if(hs)wireDetail(box,hs.track)}
 }
@@ -611,6 +720,7 @@ function renderCmp(){
    <tr><td>Vel. media</td>${col(s=>s.v+' km/h')}</tr>
    <tr><td>Vel. max</td>${col(s=>s.st.vmax+' km/h')}</tr>
    <tr><td>Fermo</td>${col(s=>fmtDur(s.st.stop))}</tr>
+   <tr><td>Navigatore</td>${col(s=>{const r=predResult(s.track);return r&&r.reached?diffBadge(r):'<span class="mut">–</span>'})}</tr>
    <tr><td>Note</td>${col(s=>{const n=noteOf(s.track);return n?(n.tags.map(tagIcon).join('')||'')+(n.text?` <span class="mut">${esc(n.text.length>24?n.text.slice(0,24)+'…':n.text)}</span>`:''):'<span class="mut">–</span>'})}</tr>
   </table><p class="mut" style="margin:6px 0 0">“Fermo” = tempo sotto i 3 km/h (semafori, code). Vel. max calcolata su almeno 20 s.</p></div>`;
   h+=`<div class="card"><h3>Andamento: tempo trascorso per km percorso</h3>${chart(segs)}<p class="mut" style="margin:4px 0 0">Più la linea è bassa, più si è in vantaggio. I tratti piatti verso l'alto sono le soste.</p></div>`;
@@ -651,9 +761,9 @@ function renderArc(){
   if(!TRACKS.length){el.innerHTML='<p class="mut">Nessuna traccia salvata.</p>';return}
   const tot=TRACKS.reduce((s,t)=>s+pathLen(t.points),0);
   el.innerHTML=`<p class="mut">${TRACKS.length} tracce · ${fmtKm(tot)} km totali. ☑ = aggiungi al confronto.</p>`+TRACKS.map(t=>{const len=pathLen(t.points),dur=t.effDur,k=`${t.id}:0:${t.points.length-1}`;
-    return `<div class="item"><input type="checkbox" class="ck" data-ck="${k}" data-id="${t.id}" ${SEL.has(k)?'checked':''}><span style="font-size:20px">${vi(t.vehicle)}</span><div class="grow"><b>${dd(t.start)}</b> · ${hh(t.start)}→${hh(t.end)}${t.demo?' <span class="mut">demo</span>':''}<br><span class="mut">${fmtDur(dur)} · ${fmtKm(len)} km · ${fmtV(len,dur)} km/h${t.pausedMs>=30000?' · ⏸ '+fmtDur(t.pausedMs/1000):''}</span>${noteBadge(t)}</div><button data-s="${t.id}">👁</button><button data-d="${t.id}">🗑</button></div>`}).join('');
+    return `<div class="item"><input type="checkbox" class="ck" data-ck="${k}" data-id="${t.id}" ${SEL.has(k)?'checked':''}><span style="font-size:20px">${vi(t.vehicle)}</span><div class="grow"><b>${dd(t.start)}</b> · ${hh(t.start)}→${hh(t.end)}${t.demo?' <span class="mut">demo</span>':''}<br><span class="mut">${fmtDur(dur)} · ${fmtKm(len)} km · ${fmtV(len,dur)} km/h${t.pausedMs>=30000?' · ⏸ '+fmtDur(t.pausedMs/1000):''}</span> ${diffBadge(predResult(t))}${noteBadge(t)}</div><button data-s="${t.id}">👁</button><button data-d="${t.id}">🗑</button></div>`}).join('');
   $$('#arcList [data-ck]').forEach(c=>c.onchange=()=>{const t=TRACKS.find(x=>String(x.id)===c.dataset.id);if(c.checked){if(SEL.size>=6){c.checked=false;toast('Massimo 6 nel confronto');return}SEL.set(c.dataset.ck,{id:t.id,i0:0,i1:t.points.length-1})}else SEL.delete(c.dataset.ck);updCmpBtn();toast(`${SEL.size} nel confronto`,1200)});
-  $$('#arcList [data-s]').forEach(b=>b.onclick=()=>{const t=TRACKS.find(x=>String(x.id)===b.dataset.s);L_arc.clearLayers();drawSpeedLine(L_arc,t.points,0,t.points.length-1,t.vehicle);showLegend(t.vehicle);
+  $$('#arcList [data-s]').forEach(b=>b.onclick=()=>{const t=TRACKS.find(x=>String(x.id)===b.dataset.s);L_arc.clearLayers();drawPred(L_arc,predOf(t));drawSpeedLine(L_arc,t.points,0,t.points.length-1,t.vehicle);showLegend(t.vehicle);
     map.fitBounds(L.latLngBounds(t.points.map(ll)),{padding:[30,30]});
     const box=$('#arcDet');const show=()=>{box.innerHTML=detailCard(t,0,t.points.length-1,'Traccia');box.querySelector('[data-close]').onclick=()=>{box.innerHTML='';L_arc.clearLayers();showLegend(null)};wireDetail(box,t,()=>setTimeout(show,0))};show();$('#p-arc').scrollTop=0});
   $$('#arcList [data-d]').forEach(b=>b.onclick=()=>confirmBtn(b,()=>{API.del(+b.dataset.d);reloadTracks();renderArc()}));
@@ -710,6 +820,11 @@ function showVersion(){
   if(!IS_ANDROID){$('#verInfo').textContent='Versione browser (anteprima)';$('#updBtn').style.display='none';return}
   try{const v=JSON.parse(Android.appInfo());$('#verInfo').textContent=`Versione ${v.apk}.${v.web}${v.updates?' · aggiornamenti automatici attivi':''}`}catch(e){}
 }
+function ttShow(){const k=API.kvGet('ttkey','');$('#ttKey').value=k?k.slice(0,4)+'••••••••'+k.slice(-3):'';$('#ttKey').dataset.masked=k?'1':'';$('#ttState').textContent=k?'Chiave salvata ✓':'Nessuna chiave: la previsione è disattivata'}
+$('#ttKey').onfocus=()=>{if($('#ttKey').dataset.masked){$('#ttKey').value='';$('#ttKey').dataset.masked=''}};
+$('#ttSave').onclick=()=>{const v=$('#ttKey').value.trim();if($('#ttKey').dataset.masked)return toast('Chiave già salvata');API.kvSet('ttkey',v);ttShow();toast(v?'Chiave TomTom salvata':'Chiave rimossa')};
+$('#ttTest').onclick=async()=>{const a=PLACES[0],b=PLACES[1];const o=a?[a.lat,a.lon]:[44.0594,12.5683],d=b?[b.lat,b.lon]:[44.0678,12.5695];
+  $('#ttState').textContent='Provo…';try{const r=await ttRoute(o,d,ui.veh);$('#ttState').innerHTML=`<span class="gain">Funziona ✓</span> ${a&&b?esc(a.name)+'→'+esc(b.name)+': ':''}${fmtDur(r.eta)} (${r.mode})`}catch(e){$('#ttState').innerHTML=`<span class="loss">Errore:</span> ${esc(String(e.message||e)).slice(0,120)}`}};
 $('#updBtn').onclick=()=>{toast('Controllo aggiornamenti…');Android.checkUpdate()};
 
 /* ================= avvio ================= */
@@ -717,7 +832,7 @@ $('#updBtn').onclick=()=>{toast('Controllo aggiornamenti…');Android.checkUpdat
   reloadTracks();setRecVeh(ui.veh||'scooter');fillSelects();
   $('#rad').value=ui.rad||'120';$('#sort').value=ui.sort||'recent';
   $$('#vehF button').forEach(b=>b.classList.toggle('on',b.dataset.v===(ui.vf||'all')));
-  drawPlaces();poll();showVersion();
+  drawPlaces();poll();showVersion();ttShow();
   const lt=TRACKS.find(t=>!t.demo);
   if(lt&&!noteOf(lt)&&ui.prompted!==lt.start&&Date.now()-lt.end<3*3600e3&&!API.state().rec){ui.prompted=lt.start;saveUi();setTimeout(()=>openNote(lt,'Traccia salvata ✓ — vuoi aggiungere una nota?'),700)}
   if(!PLACES.length)setTimeout(()=>toast('Inizia aggiungendo i tuoi luoghi nella scheda 📍 Luoghi',4000),800);
